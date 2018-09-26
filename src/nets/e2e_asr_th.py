@@ -342,7 +342,7 @@ class E2E(torch.nn.Module):
         else:
             loss_att, acc = self.dec(hs_pad, hlens, ys_pad)
 
-        loss_spk = F.binary_cross_entropy(self.spk_classifier(hs_pad), spks)
+        loss_spk = F.binary_cross_entropy(self.spk_classifier(hs_pad, hlens), spks)
 
         return loss_ctc, loss_att, acc, loss_spk
 
@@ -423,9 +423,10 @@ class SpeakerClassifier(torch.nn.Module):
         layers.append(torch.nn.Sigmoid())
         self.layers = torch.nn.Sequential(*layers)
 
-    def forward(self, hspad):
-        # assert hspad.dim() == 2 and hspad.size(1) == self.emb_dim
-        return self.layers(hspad)
+    def forward(self, hs_pad, hlens):
+        # normalize hidden features based on sequence length.
+        norm_hs_pad = torch.stack([hsum/hlen for hsum, hlen in zip(torch.sum(hs_pad, 1), hlens.float())])
+        return self.layers(norm_hs_pad)
 
 # ------------- CTC Network --------------------------------------------------------------------------------------------
 class CTC(torch.nn.Module):
