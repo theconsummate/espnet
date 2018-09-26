@@ -145,6 +145,10 @@ class Loss(torch.nn.Module):
         loss_ctc, loss_att, acc, loss_spk = self.predictor(xs_pad, ilens, ys_pad, spks)
         logging.warning("Speaker loss: ...")
         logging.warning(loss_spk)
+        logging.warning("ctc loss: ...")
+        logging.warning(loss_ctc)
+        logging.warning("att loss: ...")
+        logging.warning(loss_att)
         alpha = self.mtlalpha
         if alpha == 0:
             self.loss = loss_att
@@ -338,7 +342,7 @@ class E2E(torch.nn.Module):
         else:
             loss_att, acc = self.dec(hs_pad, hlens, ys_pad)
 
-        loss_spk = self.spk_classifier(hs_pad)
+        loss_spk = F.binary_cross_entropy(self.spk_classifier(hs_pad), spks)
 
         return loss_ctc, loss_att, acc, loss_spk
 
@@ -405,12 +409,13 @@ class SpeakerClassifier(torch.nn.Module):
         self.eprojs = eprojs
         self.spk_output_dim = spk_output_dim
         self.layers = 2
+        self.hid_dim = 64
         self.dropout_rate = dropout_rate
 
-        layers = [torch.nn.Dropout(self.dropout_rate)]
+        layers = []
         for i in range(self.layers + 1):
-            input_dim = self.eprojs
-            output_dim = self.spk_output_dim if i == self.layers else self.eprojs
+            input_dim = self.eprojs if i == 0 else self.hid_dim
+            output_dim = self.spk_output_dim if i == self.layers else self.hid_dim
             layers.append(torch.nn.Linear(input_dim, output_dim))
             if i < self.layers:
                 layers.append(torch.nn.LeakyReLU(0.2))
@@ -420,7 +425,7 @@ class SpeakerClassifier(torch.nn.Module):
 
     def forward(self, hspad):
         # assert hspad.dim() == 2 and hspad.size(1) == self.emb_dim
-        return self.layers(hspad).view(-1)
+        return self.layers(hspad)
 
 # ------------- CTC Network --------------------------------------------------------------------------------------------
 class CTC(torch.nn.Module):
