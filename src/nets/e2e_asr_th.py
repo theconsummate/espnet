@@ -143,12 +143,12 @@ class Loss(torch.nn.Module):
         '''
         self.loss = None
         loss_ctc, loss_att, acc, loss_spk = self.predictor(xs_pad, ilens, ys_pad, spks)
-        logging.warning("Speaker loss: ...")
-        logging.warning(loss_spk)
-        logging.warning("ctc loss: ...")
-        logging.warning(loss_ctc)
-        logging.warning("att loss: ...")
-        logging.warning(loss_att)
+        logging.info("Speaker loss: ...")
+        logging.info(loss_spk)
+        logging.info("ctc loss: ...")
+        logging.info(loss_ctc)
+        logging.info("att loss: ...")
+        logging.info(loss_att)
         alpha = self.mtlalpha
         if alpha == 0:
             self.loss = loss_att
@@ -163,6 +163,8 @@ class Loss(torch.nn.Module):
             loss_att_data = float(loss_att)
             loss_ctc_data = float(loss_ctc)
 
+        # add inverse speaker loss
+        self.loss = self.loss + 0.1/loss_spk
         loss_data = float(self.loss)
         if loss_data < CTC_LOSS_THRESHOLD and not math.isnan(loss_data):
             self.reporter.report(loss_ctc_data, loss_att_data, acc, loss_data)
