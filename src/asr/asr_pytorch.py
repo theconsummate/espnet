@@ -161,7 +161,10 @@ class CustomConverter(object):
         xs_pad = pad_list([torch.from_numpy(x).float() for x in xs], 0).to(device)
         ilens = torch.from_numpy(ilens).to(device)
         ys_pad = pad_list([torch.from_numpy(y).long() for y in ys], self.ignore_id).to(device)
-        spks = torch.stack(spks).to(device)
+        # one hot
+        # spks = torch.stack(spks).to(device)
+        # class labels
+        spks = torch.from_numpy(np.asarray(spks)).to(device)
 
         return xs_pad, ilens, ys_pad, spks
 
