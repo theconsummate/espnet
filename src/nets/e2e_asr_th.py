@@ -143,7 +143,8 @@ class Loss(torch.nn.Module):
         '''
         self.loss = None
         loss_ctc, loss_att, acc, loss_spk = self.predictor(xs_pad, ilens, ys_pad, spks)
-        logging.warning("Speaker loss: " + loss_spk)
+        logging.warning("Speaker loss: ...")
+        logging.warning(loss_spk)
         alpha = self.mtlalpha
         if alpha == 0:
             self.loss = loss_att
