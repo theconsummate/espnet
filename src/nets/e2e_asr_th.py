@@ -342,7 +342,9 @@ class E2E(torch.nn.Module):
         else:
             loss_att, acc = self.dec(hs_pad, hlens, ys_pad)
 
-        loss_spk = F.binary_cross_entropy(self.spk_classifier(hs_pad, hlens), spks)
+        # loss_spk = F.binary_cross_entropy(self.spk_classifier(hs_pad, hlens), spks)
+        loss_spk = F.cross_entropy(self.spk_classifier(hs_pad, hlens), spks.long())
+
 
         return loss_ctc, loss_att, acc, loss_spk
 

@@ -26,6 +26,7 @@ import kaldi_io_py
 
 # spk related
 from onehot import spk_one_hot
+from spk_dict import spk_class_dict
 
 # matplotlib related
 import matplotlib
@@ -73,7 +74,10 @@ def load_inputs_and_targets(batch):
     # load acoustic features and target sequence of token ids
     xs = [kaldi_io_py.read_mat(b[1]['input'][0]['feat']) for b in batch]
     ys = [b[1]['output'][0]['tokenid'].split() for b in batch]
-    spks = [spk_one_hot[b[1]['utt2spk']] for b in batch]
+    # onehot
+    # spks = [spk_one_hot[b[1]['utt2spk']] for b in batch]
+    # for cross entropy loss
+    spks = [spk_class_dict[b[1]['utt2spk']] for b in batch]
 
     # get index of non-zero length samples
     nonzero_idx = filter(lambda i: len(ys[i]) > 0, range(len(xs)))
