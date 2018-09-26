@@ -429,7 +429,7 @@ class SpeakerClassifier(torch.nn.Module):
 
     def forward(self, hs_pad, hlens):
         # normalize hidden features based on sequence length.
-        hlens = torch.from_numpy(np.fromiter(hlens, dtype=np.int32))
+        hlens = to_cuda(self, hlens)
         norm_hs_pad = torch.stack([hsum/hlen for hsum, hlen in zip(torch.sum(hs_pad, 1), hlens.float())])
         return self.layers(norm_hs_pad)
 
