@@ -132,7 +132,7 @@ class Loss(torch.nn.Module):
         self.predictor = predictor
         self.reporter = Reporter()
 
-    def forward(self, xs_pad, ilens, ys_pad):
+    def forward(self, xs_pad, ilens, ys_pad, spks):
         '''Multi-task learning loss forward
 
         :param torch.Tensor xs_pad: batch of padded input sequences (B, Tmax, idim)
@@ -142,7 +142,8 @@ class Loss(torch.nn.Module):
         :rtype: torch.Tensor
         '''
         self.loss = None
-        loss_ctc, loss_att, acc = self.predictor(xs_pad, ilens, ys_pad)
+        loss_ctc, loss_att, acc, loss_spk = self.predictor(xs_pad, ilens, ys_pad, spks)
+        logging.warning("Speaker loss: " + loss_spk)
         alpha = self.mtlalpha
         if alpha == 0:
             self.loss = loss_att
@@ -206,6 +207,9 @@ class E2E(torch.nn.Module):
             labeldist = label_smoothing_dist(odim, args.lsm_type, transcript=args.train_json)
         else:
             labeldist = None
+
+        # speaker classifier
+        self.spk_classifier = SpeakerClassifier(args.eprojs, 283, args.dropout_rate)
 
         # encoder
         self.enc = Encoder(args.etype, idim, args.elayers, args.eunits, args.eprojs,
@@ -304,7 +308,7 @@ class E2E(torch.nn.Module):
         for l in six.moves.range(len(self.dec.decoder)):
             set_forget_bias_to_one(self.dec.decoder[l].bias_ih)
 
-    def forward(self, xs_pad, ilens, ys_pad):
+    def forward(self, xs_pad, ilens, ys_pad, spks):
         '''E2E forward
 
         :param torch.Tensor xs_pad: batch of padded input sequences (B, Tmax, idim)
@@ -333,7 +337,9 @@ class E2E(torch.nn.Module):
         else:
             loss_att, acc = self.dec(hs_pad, hlens, ys_pad)
 
-        return loss_ctc, loss_att, acc
+        loss_spk = self.spk_classifier(hs_pad)
+
+        return loss_ctc, loss_att, acc, loss_spk
 
     def recognize(self, x, recog_args, char_list, rnnlm=None):
         '''E2E beam search
@@ -391,6 +397,29 @@ class E2E(torch.nn.Module):
 
         return att_ws
 
+class SpeakerClassifier(torch.nn.Module):
+    def __init__(self, eprojs, spk_output_dim, dropout_rate):
+        super(SpeakerClassifier, self).__init__()
+
+        self.eprojs = eprojs
+        self.spk_output_dim = spk_output_dim
+        self.layers = 2
+        self.dropout_rate = dropout_rate
+
+        layers = [torch.nn.Dropout(self.dropout_rate)]
+        for i in range(self.layers + 1):
+            input_dim = self.eprojs
+            output_dim = self.spk_output_dim if i == self.layers else self.eprojs
+            layers.append(torch.nn.Linear(input_dim, output_dim))
+            if i < self.layers:
+                layers.append(torch.nn.LeakyReLU(0.2))
+                layers.append(torch.nn.Dropout(self.dropout_rate))
+        layers.append(torch.nn.Sigmoid())
+        self.layers = torch.nn.Sequential(*layers)
+
+    def forward(self, hspad):
+        # assert hspad.dim() == 2 and hspad.size(1) == self.emb_dim
+        return self.layers(hspad).view(-1)
 
 # ------------- CTC Network --------------------------------------------------------------------------------------------
 class CTC(torch.nn.Module):

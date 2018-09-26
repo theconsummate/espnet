@@ -24,6 +24,9 @@ from chainer.training import extension
 # io related
 import kaldi_io_py
 
+# spk related
+from onehot import spk_one_hot
+
 # matplotlib related
 import matplotlib
 matplotlib.use('Agg')
@@ -70,6 +73,7 @@ def load_inputs_and_targets(batch):
     # load acoustic features and target sequence of token ids
     xs = [kaldi_io_py.read_mat(b[1]['input'][0]['feat']) for b in batch]
     ys = [b[1]['output'][0]['tokenid'].split() for b in batch]
+    spks = [spk_one_hot[b[1]['utt2spk']] for b in batch]
 
     # get index of non-zero length samples
     nonzero_idx = filter(lambda i: len(ys[i]) > 0, range(len(xs)))
@@ -82,8 +86,9 @@ def load_inputs_and_targets(batch):
     # remove zero-length samples
     xs = [xs[i] for i in nonzero_sorted_idx]
     ys = [np.fromiter(map(int, ys[i]), dtype=np.int64) for i in nonzero_sorted_idx]
-
-    return xs, ys
+    spks = [spks[i] for i in nonzero_sorted_idx]
+    
+    return xs, ys, spks
 
 
 # * -------------------- chainer extension related -------------------- *

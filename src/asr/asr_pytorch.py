@@ -148,7 +148,7 @@ class CustomConverter(object):
     def __call__(self, batch, device):
         # batch should be located in list
         assert len(batch) == 1
-        xs, ys = batch[0]
+        xs, ys, spks = batch[0]
 
         # perform subsamping
         if self.subsamping_factor > 1:
@@ -161,8 +161,9 @@ class CustomConverter(object):
         xs_pad = pad_list([torch.from_numpy(x).float() for x in xs], 0).to(device)
         ilens = torch.from_numpy(ilens).to(device)
         ys_pad = pad_list([torch.from_numpy(y).long() for y in ys], self.ignore_id).to(device)
+        spks = spks.to(device)
 
-        return xs_pad, ilens, ys_pad
+        return xs_pad, ilens, ys_pad, spks
 
 
 def train(args):
@@ -264,7 +265,7 @@ def train(args):
     # actual bathsize is included in a list
     train_iter = chainer.iterators.MultiprocessIterator(
         TransformDataset(train, converter.transform),
-        batch_size=1, n_processes=1, n_prefetch=8, maxtasksperchild=20)
+        batch_size=1, n_processes=1, n_prefetch=8)
     valid_iter = chainer.iterators.SerialIterator(
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)

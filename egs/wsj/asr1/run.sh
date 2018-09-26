@@ -76,8 +76,8 @@ ctc_weight=0.3
 recog_model=model.acc.best # set a model to be used for decoding: 'model.acc.best' or 'model.loss.best'
 
 # data
-wsj0=/export/corpora5/LDC/LDC93S6B
-wsj1=/export/corpora5/LDC/LDC94S13B
+wsj0=/projekte/slu/Data/WSJ0
+wsj1=/projekte/slu/Data/WSJ1
 
 # exp tag
 tag="" # tag for managing experiments.
