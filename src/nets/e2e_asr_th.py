@@ -216,7 +216,7 @@ class E2E(torch.nn.Module):
             labeldist = None
 
         # speaker classifier
-        self.spk_classifier = SpeakerClassifier(args.eprojs, 283, args.dropout_rate)
+        self.spk_classifier = SpeakerClassifier(args.eprojs, 284, args.dropout_rate)
 
         # encoder
         self.enc = Encoder(args.etype, idim, args.elayers, args.eunits, args.eprojs,

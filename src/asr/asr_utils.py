@@ -77,7 +77,13 @@ def load_inputs_and_targets(batch):
     # onehot
     # spks = [spk_one_hot[b[1]['utt2spk']] for b in batch]
     # for cross entropy loss
-    spks = [spk_class_dict[b[1]['utt2spk']] for b in batch]
+    spks = []
+    for b in batch:
+        try:
+            spks.append(spk_class_dict[b[1]['utt2spk']])
+        except KeyError:
+            spks.append(spk_class_dict['UNKNOWN'])
+
 
     # get index of non-zero length samples
     nonzero_idx = filter(lambda i: len(ys[i]) > 0, range(len(xs)))
@@ -91,7 +97,7 @@ def load_inputs_and_targets(batch):
     xs = [xs[i] for i in nonzero_sorted_idx]
     ys = [np.fromiter(map(int, ys[i]), dtype=np.int64) for i in nonzero_sorted_idx]
     spks = [spks[i] for i in nonzero_sorted_idx]
-    
+
     return xs, ys, spks
 
 
