@@ -348,7 +348,7 @@ class E2E(torch.nn.Module):
         # loss_spk = F.cross_entropy(self.spk_classifier(hs_pad, hlens), spks.long())
 
         # frame level speaker classification
-        spks_frame = torch.cat([torch.stack([spks[ii] for ii in range(int(hlen))]) for hlen in hlens])
+        spks_frame = torch.cat([torch.stack([spks[jj]] * int(hlens[jj])) for jj in range(len(hlens))])
         loss_spk = F.cross_entropy(self.spk_classifier(hs_pad, hlens), spks_frame.long())
 
         return loss_ctc, loss_att, acc, loss_spk
