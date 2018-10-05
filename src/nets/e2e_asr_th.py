@@ -345,8 +345,11 @@ class E2E(torch.nn.Module):
             loss_att, acc = self.dec(hs_pad, hlens, ys_pad)
 
         # loss_spk = F.binary_cross_entropy(self.spk_classifier(hs_pad, hlens), spks)
-        loss_spk = F.cross_entropy(self.spk_classifier(hs_pad, hlens), spks.long())
+        # loss_spk = F.cross_entropy(self.spk_classifier(hs_pad, hlens), spks.long())
 
+        # frame level speaker classification
+        spks_frame = torch.cat([torch.stack([spks[ii] for ii in range(int(hlen))]) for hlen in hlens])
+        loss_spk = F.cross_entropy(self.spk_classifier(hs_pad, hlens), spks_frame.long())
 
         return loss_ctc, loss_att, acc, loss_spk
 
@@ -430,8 +433,13 @@ class SpeakerClassifier(torch.nn.Module):
     def forward(self, hs_pad, hlens):
         # normalize hidden features based on sequence length.
         hlens = to_cuda(self, hlens)
-        norm_hs_pad = torch.stack([hsum/hlen for hsum, hlen in zip(torch.sum(hs_pad, 1), hlens.float())])
-        return self.layers(norm_hs_pad)
+        # norm_hs_pad = torch.stack([hsum/hlen for hsum, hlen in zip(torch.sum(hs_pad, 1), hlens.float())])
+        # return self.layers(norm_hs_pad)
+        
+        # frame level classifier instead of taking the average
+        # need to expand the speaker labels too accordingly while calculating loss.
+        hs_pad_frame = torch.cat([hs_p[:int(hlen)] for hs_p, hlen in zip(hs_pad,hlens) ])
+        return self.layers(hs_pad_frame)
 
 # ------------- CTC Network --------------------------------------------------------------------------------------------
 class CTC(torch.nn.Module):
