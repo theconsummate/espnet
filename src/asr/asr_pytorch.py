@@ -101,7 +101,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
     '''Custom evaluater for pytorch'''
 
     def __init__(self, dis, iterator, target, converter, device):
-        super(CustomEvaluator, self).__init__(iterator, target)
+        super(CustomDiscriminatorEvaluator, self).__init__(iterator, target)
         self.dis = dis
         self.converter = converter
         self.device = device
@@ -130,7 +130,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     # x: original json with loaded features
                     #    will be converted to chainer variable later
                     xs, ilens, ys = self.converter(batch, self.device)
-                    ys_pred = discriminator.batchClassify(xs)
+                    ys_pred = self.dis.batchClassify(xs)
                     # all positive examples
                     ys_true = torch.ones(ys.size()[0])
                     loss = torch.nn.BCELoss(ys_pred, ys_true)
@@ -218,13 +218,13 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
         target[ys_true.size()[0]:] = 0
 
-        dis_opt.zero_grad()
-        out = discriminator.batchClassify(inp)
+        optimizer.zero_grad()
+        out = self.dis.batchClassify(inp)
         loss = torch.nn.BCELoss(out, target)
         # report the values
         observation = {}
         with reporter_module.scope(observation):
-            reporter_module.report({'dis_loss': float(loss)}, dis_reporter)
+            reporter_module.report({'dis_loss': float(loss)}, self.dis_reporter)
 
         # backprop
         loss.backward()
@@ -313,7 +313,7 @@ def train(args):
         logging.info('Multitask learning mode')
 
     # specify model architecture
-    dis = discriminator.Discriminator(64, 64, 52)
+    dis = Discriminator(64, 64, 52)
     e2e = E2E(idim, odim, args, dis, False)
     model = Loss(e2e, args.mtlalpha)
 
@@ -376,9 +376,10 @@ def train(args):
 
     # Set up a trainer
     updater = CustomUpdater(
-        model, args.grad_clip, train_iter, converter, device, args.ngpu)
+        model, args.grad_clip, train_iter, optimizer, converter, device, args.ngpu)
     trainer = training.Trainer(
-        updater, (args.epochs, 'epoch'), out=args.outdir)
+        # updater, (args.epochs, 'epoch'), out=args.outdir)
+        updater, (0.1, 'epoch'), out=args.outdir)
 
     # Resume from a snapshot
     if args.resume:
@@ -460,12 +461,13 @@ def train(args):
     dis = dis.to(device)
     # train discriminator
     dis_optimizer = torch.optim.Adagrad(dis.parameters())
-    dis_updater = CustomDiscriminatorUpdater(
-        e2e, discriminator, args.grad_clip, train_iter, dis_optimizer, converter, device, args.ngpu)
-    dis_trainer = training.Trainer(
-        dis_updater, (args.dis_epochs, 'epoch'), out=args.outdir)
-    # Evaluate the model with the test dataset for each epoch
     dis_reporter = Reporter()
+    dis_updater = CustomDiscriminatorUpdater(
+        e2e, dis, args.grad_clip, train_iter, dis_optimizer, converter, dis_reporter, device, args.ngpu)
+    dis_trainer = training.Trainer(
+        dis_updater, (0.1, 'epoch'), out=args.outdir)
+    # Evaluate the model with the test dataset for each epoch
+    
     dis_trainer.extend(CustomDiscriminatorEvaluator(dis, valid_iter, dis_reporter, converter, device))
 
     # Save best models
@@ -495,12 +497,12 @@ def train(args):
         logging.info("starting adversarial training")
         # TRAIN GENERATOR
         # train generator with policy gradient
-        trainer.stop_trigger = (1, 'epoch')
+        trainer.stop_trigger = (0.1, 'epoch')
         trainer.run()
 
         # TRAIN DISCRIMINATOR
         print('\nAdversarial Training Discriminator : ')
-        dis_trainer.stop_trigger = (5, 'epoch')
+        dis_trainer.stop_trigger = (0.2, 'epoch')
         dis_trainer.run()
 
 

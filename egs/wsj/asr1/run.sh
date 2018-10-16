@@ -291,8 +291,9 @@ if [ ${stage} -le 4 ]; then
         --maxlen-in ${maxlen_in} \
         --maxlen-out ${maxlen_out} \
         --opt ${opt} \
-        --epochs ${epochs} \
-        --dis-epochs ${dis_epochs}
+        --epochs ${epochs}
+        # \
+        # --dis-epochs ${dis_epochs}
 fi
 
 if [ ${stage} -le 5 ]; then
