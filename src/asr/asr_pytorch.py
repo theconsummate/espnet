@@ -487,7 +487,13 @@ def train(args):
         report_keys), trigger=(REPORT_INTERVAL, 'iteration'))
 
     dis_trainer.extend(extensions.ProgressBar(update_interval=REPORT_INTERVAL))
-
+    
+    # copy a new trainer object for later use
+    # shallow copy will keep the underlying references same.
+    # trainer object can only be used once.
+    trainer_copy = copy.copy(trainer)
+    dis_trainer_copy = copy.copy(dis_trainer)
+    
     # Run the training
     trainer.run()
 
@@ -501,13 +507,16 @@ def train(args):
         logging.info("starting adversarial training")
         # TRAIN GENERATOR
         # train generator with policy gradient
-        trainer.stop_trigger = (0.1, 'epoch')
-        trainer.run()
+        trainer_copy_temp = copy.copy(trainer_copy)
+        dis_trainer_copy_temp = copy.copy(dis_trainer_copy)
+        
+        trainer_copy_temp.stop_trigger = (0.1, 'epoch')
+        trainer_copy_temp.run()
 
         # TRAIN DISCRIMINATOR
         print('\nAdversarial Training Discriminator : ')
-        dis_trainer.stop_trigger = (0.2, 'epoch')
-        dis_trainer.run()
+        dis_trainer_copy_temp.stop_trigger = (0.2, 'epoch')
+        dis_trainer_copy_temp.run()
 
 
 
