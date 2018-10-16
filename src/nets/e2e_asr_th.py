@@ -161,6 +161,8 @@ class Loss(torch.nn.Module):
             loss_ctc_data = float(loss_ctc)
         if loss_pg:
             self.loss += float(loss_pg)
+            logging.warning("added pg loss")
+            print("policy gradient learning loss: " + str(float(self.loss)))
 
         loss_data = float(self.loss)
         if loss_data < CTC_LOSS_THRESHOLD and not math.isnan(loss_data):
@@ -343,9 +345,10 @@ class E2E(torch.nn.Module):
             loss_att, acc, ys_hat, ys_true = self.dec(hs_pad, hlens, ys_pad)
 
         loss_pg = None
+        logging.warning(self.use_pgloss)
         if self.use_pgloss:
             rewards = self.dis.batchClassify(ys_true)
-            loss_pg = batchPGLoss(ys_hat, ys_true, rewards)
+            loss_pg = self.batchPGLoss(ys_hat, ys_true, rewards)
 
         return loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true
 
