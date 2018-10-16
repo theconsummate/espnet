@@ -462,6 +462,11 @@ def train(args):
     # train discriminator
     dis_optimizer = torch.optim.Adagrad(dis.parameters())
     dis_reporter = Reporter()
+
+    # FIXME: TOO DIRTY HACK
+    setattr(dis_optimizer, "target", dis_reporter)
+    setattr(dis_optimizer, "serialize", lambda s: dis_reporter.serialize(s))
+
     dis_updater = CustomDiscriminatorUpdater(
         e2e, dis, args.grad_clip, train_iter, dis_optimizer, converter, dis_reporter, device, args.ngpu)
     dis_trainer = training.Trainer(
