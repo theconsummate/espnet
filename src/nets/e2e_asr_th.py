@@ -145,7 +145,7 @@ class Loss(torch.nn.Module):
         :rtype: torch.Tensor
         '''
         self.loss = None
-        loss_ctc, loss_att, acc, loss_pg, _ = self.predictor(xs_pad, ilens, ys_pad)
+        loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true = self.predictor(xs_pad, ilens, ys_pad)
         alpha = self.mtlalpha
         if alpha == 0:
             self.loss = loss_att
