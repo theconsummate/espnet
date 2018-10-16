@@ -482,7 +482,7 @@ def train(args):
 
     # Write a log of evaluation statistics for each epoch
     dis_trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
-    report_keys = ['epoch', 'iteration', 'main/dis_loss', 'validation/main/dis_loss', 'validation/main/dis_acc', 'elapsed_time']
+    report_keys = ['epoch', 'iteration', 'main/loss_dis', 'validation/main/loss_dis', 'validation/main/acc_dis', 'elapsed_time']
     dis_trainer.extend(extensions.PrintReport(
         report_keys), trigger=(REPORT_INTERVAL, 'iteration'))
 
