@@ -17,7 +17,6 @@ from chainer.datasets import TransformDataset
 from chainer import reporter as reporter_module
 from chainer import training
 from chainer.training import extensions
-from chainer import Reporter
 
 # torch related
 import torch
@@ -38,6 +37,8 @@ from asr_utils import torch_snapshot
 from e2e_asr_th import E2E
 from e2e_asr_th import Loss
 from e2e_asr_th import pad_list
+
+from e2e_asr_th import Reporter
 
 # for kaldi io
 import kaldi_io_py
@@ -135,8 +136,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     ys_true = torch.ones(ys.size()[0])
                     loss = torch.nn.BCELoss(ys_pred, ys_true)
                     acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys.size()[0])
-                    reporter_module.report({'dis_acc': acc}, target)
-                    reporter_module.report({'dis_loss': float(loss)}, target)
+                    self.target.report_dis(float(loss), acc)
                 summary.add(observation)
         self.dis.train()
 
@@ -221,10 +221,9 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         optimizer.zero_grad()
         out = self.dis.batchClassify(inp)
         loss = torch.nn.BCELoss(out, target)
+        acc_dis = torch.sum((out>0.5)==(target>0.5)).data.item()/float(target.size()[0])
         # report the values
-        observation = {}
-        with reporter_module.scope(observation):
-            reporter_module.report({'dis_loss': float(loss)}, self.dis_reporter)
+        self.dis_reporter.report_dis(float(loss), acc_dis)
 
         # backprop
         loss.backward()

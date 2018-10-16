@@ -113,7 +113,10 @@ class Reporter(chainer.Chain):
         reporter.report({'acc': acc}, self)
         logging.info('mtl loss:' + str(mtl_loss))
         reporter.report({'loss': mtl_loss}, self)
-
+    
+    def report_dis(self, loss, acc):
+        reporter.report({'loss_dis': loss}, self)
+        reporter.report({'acc_dis': acc}, self)
 
 # TODO(watanabe) merge Loss and E2E: there is no need to make these separately
 class Loss(torch.nn.Module):
