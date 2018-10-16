@@ -216,6 +216,8 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # compute the negatives form e2e
         loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
         ys_hat = torch.max(ys_hat, 2)[1]
+        # add 1 to make start index from 1
+        # ys_hat += torch.ones(ys_hat.size()).long().to(self.device)
         # ys_hat.to(self.device)
 
         inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)

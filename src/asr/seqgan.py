@@ -14,7 +14,7 @@ class Discriminator(nn.Module):
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
 
-        self.embeddings = nn.Embedding(vocab_size, embedding_dim)
+        self.embeddings = nn.Embedding(vocab_size, embedding_dim, padding_idx=-1)
         self.gru = nn.GRU(embedding_dim, hidden_dim, num_layers=2, bidirectional=True, dropout=dropout)
         self.gru2hidden = nn.Linear(2*2*hidden_dim, hidden_dim)
         self.dropout_linear = nn.Dropout(p=dropout)
