@@ -2007,7 +2007,7 @@ class Decoder(torch.nn.Module):
             loss_reg = - torch.sum((F.log_softmax(y_all, dim=1) * self.vlabeldist).view(-1), dim=0) / len(ys_in)
             self.loss = (1. - self.lsm_weight) * self.loss + self.lsm_weight * loss_reg
 
-        return self.loss, acc, y_all.view(batch, olength, -1), ys_out_pad
+        return self.loss, acc, y_all.view(batch, olength, -1), pad_list(ys_out, 0)
 
     def recognize_beam(self, h, lpz, recog_args, char_list, rnnlm=None):
         '''beam search implementation
