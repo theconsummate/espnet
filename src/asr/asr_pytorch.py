@@ -374,12 +374,11 @@ def train(args):
     valid_iter = chainer.iterators.SerialIterator(
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)
-
-    # Set up a trainer
-    updater = CustomUpdater(
-        model, args.grad_clip, train_iter, optimizer, converter, device, args.ngpu)
     
     def create_main_trainer(epochs, tag):
+        # Set up a trainer
+        updater = CustomUpdater(
+            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu)
         trainer = training.Trainer(
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)
@@ -390,7 +389,7 @@ def train(args):
             torch_resume(args.resume, trainer)
 
         # Evaluate the model with the test dataset for each epoch
-        trainer.extend(CustomEvaluator(model, valid_iter, reporter, converter, device))
+        trainer.extend(CustomEvaluator(model, copy.copy(valid_iter), reporter, converter, device))
 
         # Save attention weight each epoch
         if args.num_save_attention > 0 and args.mtlalpha != 1.0:
@@ -471,16 +470,14 @@ def train(args):
     # FIXME: TOO DIRTY HACK
     setattr(dis_optimizer, "target", dis_reporter)
     setattr(dis_optimizer, "serialize", lambda s: dis_reporter.serialize(s))
-
-    dis_updater = CustomDiscriminatorUpdater(
-        e2e, dis, args.grad_clip, train_iter, dis_optimizer, converter, dis_reporter, device, args.ngpu)
     
     def create_dis_trainer(epochs):
+        dis_updater = CustomDiscriminatorUpdater(e2e, dis, args.grad_clip, copy.copy(train_iter), dis_optimizer, converter, dis_reporter, device, args.ngpu)
         dis_trainer = training.Trainer(
             dis_updater, (epochs, 'epoch'), out=args.outdir)
         # Evaluate the model with the test dataset for each epoch
         
-        dis_trainer.extend(CustomDiscriminatorEvaluator(dis, valid_iter, dis_reporter, converter, device))
+        dis_trainer.extend(CustomDiscriminatorEvaluator(dis, copy.copy(valid_iter), dis_reporter, converter, device))
         dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
         dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
