@@ -345,8 +345,8 @@ class E2E(torch.nn.Module):
             loss_att, acc, ys_hat, ys_true = self.dec(hs_pad, hlens, ys_pad)
 
         loss_pg = None
-        logging.warning(self.use_pgloss)
         if self.use_pgloss:
+            logging.warning(self.use_pgloss)
             rewards = self.dis.batchClassify(ys_true)
             loss_pg = self.batchPGLoss(ys_hat, ys_true, rewards)
 

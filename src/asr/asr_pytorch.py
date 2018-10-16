@@ -207,6 +207,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         optimizer = self.get_optimizer('main')
 
         # Get the next batch ( a list of json files)
+        logging.warning("discriminator training loop.")
         batch = train_iter.next()
         xs_pad, ilens, ys_pad = self.converter(batch, self.device)
 
@@ -497,7 +498,7 @@ def train(args):
         return dis_trainer
     
     
-    trainer = create_main_trainer(0.1, "base")
+    trainer = create_main_trainer(0.01, "base")
     
     # Run the training
     trainer.run()
