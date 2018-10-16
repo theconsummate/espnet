@@ -388,7 +388,7 @@ class E2E(torch.nn.Module):
             self.train()
         return y
 
-    def batchPGLoss(self, inp, target, reward):
+    def batchPGLoss(self, inp, target, reward, dis):
         """
         Returns a pseudo-loss that gives corresponding policy gradients (on calling .backward()).
         Inspired by the example in http://karpathy.github.io/2016/05/31/rl/
@@ -402,17 +402,13 @@ class E2E(torch.nn.Module):
             inp should be target with <s> (start letter) prepended
         """
 
-        batch_size, seq_len = inp.size()
-        inp = inp.permute(1, 0)          # seq_len x batch_size
+        batch_size, seq_len, vocab_size = inp.size()
+        inp = inp.permute(1, 0, 2)          # seq_len x batch_size x vocab_size
         target = target.permute(1, 0)    # seq_len x batch_size
-        h = self.init_hidden(batch_size)
 
         loss = 0
         for i in range(seq_len):
-            print(inp[i])
-            print(target[i])
-            out, h = self.forward(inp[i], h)
-            print(out[0])
+            out = inp[i]
             # TODO: should h be detached from graph (.detach())?
             for j in range(batch_size):
                 loss += -out[j][target.data[i][j]]*reward[j]     # log(P(y_t|Y_1:Y_{t-1})) * Q
@@ -2007,7 +2003,7 @@ class Decoder(torch.nn.Module):
             loss_reg = - torch.sum((F.log_softmax(y_all, dim=1) * self.vlabeldist).view(-1), dim=0) / len(ys_in)
             self.loss = (1. - self.lsm_weight) * self.loss + self.lsm_weight * loss_reg
 
-        return self.loss, acc, torch.max(y_all.view(batch, olength, -1), 2)[1], pad_list(ys_out, 0)
+        return self.loss, acc, y_all.view(batch, olength, -1), pad_list(ys_out, 0)
 
     def recognize_beam(self, h, lpz, recog_args, char_list, rnnlm=None):
         '''beam search implementation
