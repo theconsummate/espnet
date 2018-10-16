@@ -208,7 +208,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         optimizer = self.get_optimizer('main')
 
         # Get the next batch ( a list of json files)
-        logging.warning("discriminator training loop.")
+        # logging.warning("discriminator training loop.")
         batch = train_iter.next()
         xs_pad, ilens, ys_pad = self.converter(batch, self.device)
 
@@ -504,25 +504,25 @@ def train(args):
         return dis_trainer
 
 
-    trainer = create_main_trainer(0.01, "base")
+    trainer = create_main_trainer(args.epochs, "base")
 
     # Run the training
     trainer.run()
 
     # train discriminator
-    dis_trainer = create_dis_trainer(0.1)
+    dis_trainer = create_dis_trainer(args.epochs/3)
     dis_trainer.run()
 
     # run adversarial training with policy gradient
-    ADV_TRAIN_EPOCHS = 5
+    ADV_TRAIN_EPOCHS = args.epochs/3
     e2e.use_pgloss = True
     print("starting adversarial training")
     for epoch in range(ADV_TRAIN_EPOCHS):
         # TRAIN GENERATOR
         # train generator with policy gradient
         print("training generator with pg loss")
-        trainer = create_main_trainer(0.1, "pgloss" + str(epoch))
-        dis_trainer = create_dis_trainer(0.1)
+        trainer = create_main_trainer(1, "pgloss" + str(epoch))
+        dis_trainer = create_dis_trainer(5)
 
         trainer.run()
 

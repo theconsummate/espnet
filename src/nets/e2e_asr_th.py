@@ -161,7 +161,7 @@ class Loss(torch.nn.Module):
             loss_ctc_data = float(loss_ctc)
         if loss_pg:
             self.loss += float(loss_pg)
-            logging.warning("added pg loss")
+            # logging.warning("added pg loss")
             print("policy gradient learning loss: " + str(float(self.loss)))
 
         loss_data = float(self.loss)
@@ -346,7 +346,7 @@ class E2E(torch.nn.Module):
 
         loss_pg = None
         if self.use_pgloss:
-            logging.warning(self.use_pgloss)
+            # logging.warning(self.use_pgloss)
             rewards = self.dis.batchClassify(ys_true)
             loss_pg = self.batchPGLoss(ys_hat, ys_true, rewards)
 
@@ -388,7 +388,7 @@ class E2E(torch.nn.Module):
             self.train()
         return y
 
-    def batchPGLoss(self, inp, target, reward, dis):
+    def batchPGLoss(self, inp, target, reward):
         """
         Returns a pseudo-loss that gives corresponding policy gradients (on calling .backward()).
         Inspired by the example in http://karpathy.github.io/2016/05/31/rl/
