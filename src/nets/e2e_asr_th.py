@@ -142,7 +142,7 @@ class Loss(torch.nn.Module):
         :rtype: torch.Tensor
         '''
         self.loss = None
-        loss_ctc, loss_att, acc = self.predictor(xs_pad, ilens, ys_pad)
+        loss_ctc, loss_att, acc, loss_pg, _ = self.predictor(xs_pad, ilens, ys_pad)
         alpha = self.mtlalpha
         if alpha == 0:
             self.loss = loss_att
@@ -156,6 +156,8 @@ class Loss(torch.nn.Module):
             self.loss = alpha * loss_ctc + (1 - alpha) * loss_att
             loss_att_data = float(loss_att)
             loss_ctc_data = float(loss_ctc)
+        if loss_pg:
+            self.loss += float(loss_pg)
 
         loss_data = float(self.loss)
         if loss_data < CTC_LOSS_THRESHOLD and not math.isnan(loss_data):
@@ -174,13 +176,17 @@ class E2E(torch.nn.Module):
     :param namespace args: argument namespace containing options
     """
 
-    def __init__(self, idim, odim, args):
+    def __init__(self, idim, odim, args, dis, use_pgloss):
         super(E2E, self).__init__()
         self.etype = args.etype
         self.verbose = args.verbose
         self.char_list = args.char_list
         self.outdir = args.outdir
         self.mtlalpha = args.mtlalpha
+
+        # discriminator
+        self.dis = dis
+        self.use_pgloss = use_pgloss
 
         # below means the last number becomes eos/sos ID
         # note that sos/eos IDs are identical
@@ -331,9 +337,14 @@ class E2E(torch.nn.Module):
             loss_att = None
             acc = None
         else:
-            loss_att, acc = self.dec(hs_pad, hlens, ys_pad)
+            loss_att, acc, ys_hat, ys_true = self.dec(hs_pad, hlens, ys_pad)
 
-        return loss_ctc, loss_att, acc
+        loss_pg = None
+        if self.use_pgloss:
+            rewards = self.dis.batchClassify(ys_true)
+            loss_pg = batchPGLoss(ys_hat, ys_true, rewards)
+
+        return loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true
 
     def recognize(self, x, recog_args, char_list, rnnlm=None):
         '''E2E beam search
@@ -370,6 +381,37 @@ class E2E(torch.nn.Module):
         if prev:
             self.train()
         return y
+
+    def batchPGLoss(self, inp, target, reward):
+        """
+        Returns a pseudo-loss that gives corresponding policy gradients (on calling .backward()).
+        Inspired by the example in http://karpathy.github.io/2016/05/31/rl/
+
+        Inputs: inp, target
+            - inp: batch_size x seq_len
+            - target: batch_size x seq_len
+            - reward: batch_size (discriminator reward for each sentence, applied to each token of the corresponding
+                      sentence)
+
+            inp should be target with <s> (start letter) prepended
+        """
+
+        batch_size, seq_len = inp.size()
+        inp = inp.permute(1, 0)          # seq_len x batch_size
+        target = target.permute(1, 0)    # seq_len x batch_size
+        h = self.init_hidden(batch_size)
+
+        loss = 0
+        for i in range(seq_len):
+            print(inp[i])
+            print(target[i])
+            out, h = self.forward(inp[i], h)
+            print(out[0])
+            # TODO: should h be detached from graph (.detach())?
+            for j in range(batch_size):
+                loss += -out[j][target.data[i][j]]*reward[j]     # log(P(y_t|Y_1:Y_{t-1})) * Q
+
+        return loss/batch_size
 
     def calculate_all_attentions(self, xs_pad, ilens, ys_pad):
         '''E2E attention calculation
@@ -1959,7 +2001,7 @@ class Decoder(torch.nn.Module):
             loss_reg = - torch.sum((F.log_softmax(y_all, dim=1) * self.vlabeldist).view(-1), dim=0) / len(ys_in)
             self.loss = (1. - self.lsm_weight) * self.loss + self.lsm_weight * loss_reg
 
-        return self.loss, acc
+        return self.loss, acc, y_all.view(batch, olength, -1), ys_out_pad
 
     def recognize_beam(self, h, lpz, recog_args, char_list, rnnlm=None):
         '''beam search implementation

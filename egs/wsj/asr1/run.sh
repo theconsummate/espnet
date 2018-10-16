@@ -82,6 +82,9 @@ wsj1=/export/corpora5/LDC/LDC94S13B
 # exp tag
 tag="" # tag for managing experiments.
 
+# discriminator settings
+dis_epochs=2
+
 . utils/parse_options.sh || exit 1;
 
 . ./path.sh
@@ -288,7 +291,8 @@ if [ ${stage} -le 4 ]; then
         --maxlen-in ${maxlen_in} \
         --maxlen-out ${maxlen_out} \
         --opt ${opt} \
-        --epochs ${epochs}
+        --epochs ${epochs} \
+        --dis-epochs ${dis_epochs}
 fi
 
 if [ ${stage} -le 5 ]; then

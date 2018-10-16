@@ -17,6 +17,7 @@ from chainer.datasets import TransformDataset
 from chainer import reporter as reporter_module
 from chainer import training
 from chainer.training import extensions
+from chainer import Reporter
 
 # torch related
 import torch
@@ -49,6 +50,9 @@ import lm_pytorch
 import matplotlib
 import numpy as np
 matplotlib.use('Agg')
+
+# seqgan related
+from seqgan import Discriminator
 
 REPORT_INTERVAL = 100
 
@@ -93,6 +97,51 @@ class CustomEvaluator(extensions.Evaluator):
         return summary.compute_mean()
 
 
+class CustomDiscriminatorEvaluator(extensions.Evaluator):
+    '''Custom evaluater for pytorch'''
+
+    def __init__(self, dis, iterator, target, converter, device):
+        super(CustomEvaluator, self).__init__(iterator, target)
+        self.dis = dis
+        self.converter = converter
+        self.device = device
+
+    # The core part of the update routine can be customized by overriding.
+    def evaluate(self):
+        iterator = self._iterators['main']
+
+        if self.eval_hook:
+            self.eval_hook(self)
+
+        if hasattr(iterator, 'reset'):
+            iterator.reset()
+            it = iterator
+        else:
+            it = copy.copy(iterator)
+
+        summary = reporter_module.DictSummary()
+
+        self.dis.eval()
+        with torch.no_grad():
+            for batch in it:
+                observation = {}
+                with reporter_module.report_scope(observation):
+                    # read scp files
+                    # x: original json with loaded features
+                    #    will be converted to chainer variable later
+                    xs, ilens, ys = self.converter(batch, self.device)
+                    ys_pred = discriminator.batchClassify(xs)
+                    # all positive examples
+                    ys_true = torch.ones(ys.size()[0])
+                    loss = torch.nn.BCELoss(ys_pred, ys_true)
+                    acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys.size()[0])
+                    reporter_module.report({'dis_acc': acc}, target)
+                    reporter_module.report({'dis_loss': float(loss)}, target)
+                summary.add(observation)
+        self.dis.train()
+
+        return summary.compute_mean()
+
 class CustomUpdater(training.StandardUpdater):
     '''Custom updater for pytorch'''
 
@@ -134,6 +183,61 @@ class CustomUpdater(training.StandardUpdater):
         else:
             optimizer.step()
 
+
+class CustomDiscriminatorUpdater(training.StandardUpdater):
+    '''Custom updater for pytorch'''
+
+    def __init__(self, e2e, discriminator, grad_clip_threshold, train_iter,
+                 optimizer, converter, dis_reporter, device, ngpu):
+        super(CustomDiscriminatorUpdater, self).__init__(train_iter, optimizer)
+        self.e2e = e2e
+        self.dis = discriminator
+        self.grad_clip_threshold = grad_clip_threshold
+        self.converter = converter
+        self.device = device
+        self.ngpu = ngpu
+        self.dis_reporter = dis_reporter
+
+    # The core part of the update routine can be customized by overriding.
+    def update_core(self):
+        # When we pass one iterator and optimizer to StandardUpdater.__init__,
+        # they are automatically named 'main'.
+        train_iter = self.get_iterator('main')
+        optimizer = self.get_optimizer('main')
+
+        # Get the next batch ( a list of json files)
+        batch = train_iter.next()
+        xs_pad, ilens, ys_pad = self.converter(batch, self.device)
+
+        # Compute the loss at this time step and accumulate it
+        optimizer.zero_grad()  # Clear the parameter gradients
+        # compute the negatives form e2e
+        loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true = self.e2e()
+
+        inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
+        target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
+        target[ys_true.size()[0]:] = 0
+
+        dis_opt.zero_grad()
+        out = discriminator.batchClassify(inp)
+        loss = torch.nn.BCELoss(out, target)
+        # report the values
+        observation = {}
+        with reporter_module.scope(observation):
+            reporter_module.report({'dis_loss': float(loss)}, dis_reporter)
+
+        # backprop
+        loss.backward()
+
+        loss.detach()  # Truncate the graph
+        # compute the gradient norm to check if it is normal or not
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.dis.parameters(), self.grad_clip_threshold)
+        logging.info('grad norm={}'.format(grad_norm))
+        if math.isnan(grad_norm):
+            logging.warning('grad norm is nan. Do not update model.')
+        else:
+            optimizer.step()
 
 class CustomConverter(object):
     """CUSTOM CONVERTER"""
@@ -209,7 +313,8 @@ def train(args):
         logging.info('Multitask learning mode')
 
     # specify model architecture
-    e2e = E2E(idim, odim, args)
+    dis = discriminator.Discriminator(64, 64, 52)
+    e2e = E2E(idim, odim, args, dis, False)
     model = Loss(e2e, args.mtlalpha)
 
     # write model config
@@ -264,14 +369,14 @@ def train(args):
     # actual bathsize is included in a list
     train_iter = chainer.iterators.MultiprocessIterator(
         TransformDataset(train, converter.transform),
-        batch_size=1, n_processes=1, n_prefetch=8, maxtasksperchild=20)
+        batch_size=1, n_processes=1, n_prefetch=8)
     valid_iter = chainer.iterators.SerialIterator(
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)
 
     # Set up a trainer
     updater = CustomUpdater(
-        model, args.grad_clip, train_iter, optimizer, converter, device, args.ngpu)
+        model, args.grad_clip, train_iter, converter, device, args.ngpu)
     trainer = training.Trainer(
         updater, (args.epochs, 'epoch'), out=args.outdir)
 
@@ -349,8 +454,55 @@ def train(args):
 
     trainer.extend(extensions.ProgressBar(update_interval=REPORT_INTERVAL))
 
+    # Setup discriminator
+    # Discriminator settings
+    # discriminator is defined at the top
+    dis = dis.to(device)
+    # train discriminator
+    dis_optimizer = torch.optim.Adagrad(dis.parameters())
+    dis_updater = CustomDiscriminatorUpdater(
+        e2e, discriminator, args.grad_clip, train_iter, dis_optimizer, converter, device, args.ngpu)
+    dis_trainer = training.Trainer(
+        dis_updater, (args.dis_epochs, 'epoch'), out=args.outdir)
+    # Evaluate the model with the test dataset for each epoch
+    dis_reporter = Reporter()
+    dis_trainer.extend(CustomDiscriminatorEvaluator(dis, valid_iter, dis_reporter, converter, device))
+
+    # Save best models
+    dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
+                   trigger=training.triggers.MinValueTrigger('validation/main/dis_loss'))
+    dis_trainer.extend(extensions.snapshot_object(model, 'dis.acc.best', savefun=torch_save),
+                       trigger=training.triggers.MaxValueTrigger('validation/main/dis_acc'))
+
+    # Write a log of evaluation statistics for each epoch
+    dis_trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
+    report_keys = ['epoch', 'iteration', 'main/dis_loss', 'validation/main/dis_loss', 'validation/main/dis_acc', 'elapsed_time']
+    dis_trainer.extend(extensions.PrintReport(
+        report_keys), trigger=(REPORT_INTERVAL, 'iteration'))
+
+    dis_trainer.extend(extensions.ProgressBar(update_interval=REPORT_INTERVAL))
+
     # Run the training
     trainer.run()
+
+    # train discriminator
+    dis_trainer.run()
+
+    # run adversarial training with policy gradient
+    ADV_TRAIN_EPOCHS = 5
+    e2e.use_pgloss = True
+    for epoch in range(ADV_TRAIN_EPOCHS):
+        logging.info("starting adversarial training")
+        # TRAIN GENERATOR
+        # train generator with policy gradient
+        trainer.stop_trigger = (1, 'epoch')
+        trainer.run()
+
+        # TRAIN DISCRIMINATOR
+        print('\nAdversarial Training Discriminator : ')
+        dis_trainer.stop_trigger = (5, 'epoch')
+        dis_trainer.run()
+
 
 
 def recog(args):
