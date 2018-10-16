@@ -376,83 +376,87 @@ def train(args):
     # Set up a trainer
     updater = CustomUpdater(
         model, args.grad_clip, train_iter, optimizer, converter, device, args.ngpu)
-    trainer = training.Trainer(
-        # updater, (args.epochs, 'epoch'), out=args.outdir)
-        updater, (0.1, 'epoch'), out=args.outdir)
+    
+    def create_main_trainer(epochs):
+        trainer = training.Trainer(
+            # updater, (args.epochs, 'epoch'), out=args.outdir)
+            updater, (epochs, 'epoch'), out=args.outdir)
 
-    # Resume from a snapshot
-    if args.resume:
-        logging.info('resumed from %s' % args.resume)
-        torch_resume(args.resume, trainer)
+        # Resume from a snapshot
+        if args.resume:
+            logging.info('resumed from %s' % args.resume)
+            torch_resume(args.resume, trainer)
 
-    # Evaluate the model with the test dataset for each epoch
-    trainer.extend(CustomEvaluator(model, valid_iter, reporter, converter, device))
+        # Evaluate the model with the test dataset for each epoch
+        trainer.extend(CustomEvaluator(model, valid_iter, reporter, converter, device))
 
-    # Save attention weight each epoch
-    if args.num_save_attention > 0 and args.mtlalpha != 1.0:
-        data = sorted(list(valid_json.items())[:args.num_save_attention],
-                      key=lambda x: int(x[1]['input'][0]['shape'][1]), reverse=True)
-        if hasattr(model, "module"):
-            att_vis_fn = model.module.predictor.calculate_all_attentions
-        else:
-            att_vis_fn = model.predictor.calculate_all_attentions
-        trainer.extend(PlotAttentionReport(
-            att_vis_fn, data, args.outdir + "/att_ws",
-            converter=converter, device=device), trigger=(1, 'epoch'))
+        # Save attention weight each epoch
+        if args.num_save_attention > 0 and args.mtlalpha != 1.0:
+            data = sorted(list(valid_json.items())[:args.num_save_attention],
+                        key=lambda x: int(x[1]['input'][0]['shape'][1]), reverse=True)
+            if hasattr(model, "module"):
+                att_vis_fn = model.module.predictor.calculate_all_attentions
+            else:
+                att_vis_fn = model.predictor.calculate_all_attentions
+            trainer.extend(PlotAttentionReport(
+                att_vis_fn, data, args.outdir + "/att_ws",
+                converter=converter, device=device), trigger=(1, 'epoch'))
 
-    # Make a plot for training and validation values
-    trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss',
-                                          'main/loss_ctc', 'validation/main/loss_ctc',
-                                          'main/loss_att', 'validation/main/loss_att'],
-                                         'epoch', file_name='loss.png'))
-    trainer.extend(extensions.PlotReport(['main/acc', 'validation/main/acc'],
-                                         'epoch', file_name='acc.png'))
+        # Make a plot for training and validation values
+        trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss',
+                                            'main/loss_ctc', 'validation/main/loss_ctc',
+                                            'main/loss_att', 'validation/main/loss_att'],
+                                            'epoch', file_name='loss.png'))
+        trainer.extend(extensions.PlotReport(['main/acc', 'validation/main/acc'],
+                                            'epoch', file_name='acc.png'))
 
-    # Save best models
-    trainer.extend(extensions.snapshot_object(model, 'model.loss.best', savefun=torch_save),
-                   trigger=training.triggers.MinValueTrigger('validation/main/loss'))
-    if mtl_mode is not 'ctc':
-        trainer.extend(extensions.snapshot_object(model, 'model.acc.best', savefun=torch_save),
-                       trigger=training.triggers.MaxValueTrigger('validation/main/acc'))
+        # Save best models
+        trainer.extend(extensions.snapshot_object(model, 'model.loss.best', savefun=torch_save),
+                    trigger=training.triggers.MinValueTrigger('validation/main/loss'))
+        if mtl_mode is not 'ctc':
+            trainer.extend(extensions.snapshot_object(model, 'model.acc.best', savefun=torch_save),
+                        trigger=training.triggers.MaxValueTrigger('validation/main/acc'))
 
-    # save snapshot which contains model and optimizer states
-    trainer.extend(torch_snapshot(), trigger=(1, 'epoch'))
+        # save snapshot which contains model and optimizer states
+        trainer.extend(torch_snapshot(), trigger=(1, 'epoch'))
 
-    # epsilon decay in the optimizer
-    if args.opt == 'adadelta':
-        if args.criterion == 'acc' and mtl_mode is not 'ctc':
-            trainer.extend(restore_snapshot(model, args.outdir + '/model.acc.best', load_fn=torch_load),
-                           trigger=CompareValueTrigger(
-                               'validation/main/acc',
-                               lambda best_value, current_value: best_value > current_value))
-            trainer.extend(adadelta_eps_decay(args.eps_decay),
-                           trigger=CompareValueTrigger(
-                               'validation/main/acc',
-                               lambda best_value, current_value: best_value > current_value))
-        elif args.criterion == 'loss':
-            trainer.extend(restore_snapshot(model, args.outdir + '/model.loss.best', load_fn=torch_load),
-                           trigger=CompareValueTrigger(
-                               'validation/main/loss',
-                               lambda best_value, current_value: best_value < current_value))
-            trainer.extend(adadelta_eps_decay(args.eps_decay),
-                           trigger=CompareValueTrigger(
-                               'validation/main/loss',
-                               lambda best_value, current_value: best_value < current_value))
+        # epsilon decay in the optimizer
+        if args.opt == 'adadelta':
+            if args.criterion == 'acc' and mtl_mode is not 'ctc':
+                trainer.extend(restore_snapshot(model, args.outdir + '/model.acc.best', load_fn=torch_load),
+                            trigger=CompareValueTrigger(
+                                'validation/main/acc',
+                                lambda best_value, current_value: best_value > current_value))
+                trainer.extend(adadelta_eps_decay(args.eps_decay),
+                            trigger=CompareValueTrigger(
+                                'validation/main/acc',
+                                lambda best_value, current_value: best_value > current_value))
+            elif args.criterion == 'loss':
+                trainer.extend(restore_snapshot(model, args.outdir + '/model.loss.best', load_fn=torch_load),
+                            trigger=CompareValueTrigger(
+                                'validation/main/loss',
+                                lambda best_value, current_value: best_value < current_value))
+                trainer.extend(adadelta_eps_decay(args.eps_decay),
+                            trigger=CompareValueTrigger(
+                                'validation/main/loss',
+                                lambda best_value, current_value: best_value < current_value))
 
-    # Write a log of evaluation statistics for each epoch
-    trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
-    report_keys = ['epoch', 'iteration', 'main/loss', 'main/loss_ctc', 'main/loss_att',
-                   'validation/main/loss', 'validation/main/loss_ctc', 'validation/main/loss_att',
-                   'main/acc', 'validation/main/acc', 'elapsed_time']
-    if args.opt == 'adadelta':
-        trainer.extend(extensions.observe_value(
-            'eps', lambda trainer: trainer.updater.get_optimizer('main').param_groups[0]["eps"]),
-            trigger=(REPORT_INTERVAL, 'iteration'))
-        report_keys.append('eps')
-    trainer.extend(extensions.PrintReport(
-        report_keys), trigger=(REPORT_INTERVAL, 'iteration'))
+        # Write a log of evaluation statistics for each epoch
+        trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
+        report_keys = ['epoch', 'iteration', 'main/loss', 'main/loss_ctc', 'main/loss_att',
+                    'validation/main/loss', 'validation/main/loss_ctc', 'validation/main/loss_att',
+                    'main/acc', 'validation/main/acc', 'elapsed_time']
+        if args.opt == 'adadelta':
+            trainer.extend(extensions.observe_value(
+                'eps', lambda trainer: trainer.updater.get_optimizer('main').param_groups[0]["eps"]),
+                trigger=(REPORT_INTERVAL, 'iteration'))
+            report_keys.append('eps')
+        trainer.extend(extensions.PrintReport(
+            report_keys), trigger=(REPORT_INTERVAL, 'iteration'))
 
-    trainer.extend(extensions.ProgressBar(update_interval=REPORT_INTERVAL))
+        trainer.extend(extensions.ProgressBar(update_interval=REPORT_INTERVAL))
+
+        return trainer
 
     # Setup discriminator
     # Discriminator settings
@@ -468,36 +472,37 @@ def train(args):
 
     dis_updater = CustomDiscriminatorUpdater(
         e2e, dis, args.grad_clip, train_iter, dis_optimizer, converter, dis_reporter, device, args.ngpu)
-    dis_trainer = training.Trainer(
-        dis_updater, (0.1, 'epoch'), out=args.outdir)
-    # Evaluate the model with the test dataset for each epoch
     
-    dis_trainer.extend(CustomDiscriminatorEvaluator(dis, valid_iter, dis_reporter, converter, device))
+    def create_dis_trainer(epochs):
+        dis_trainer = training.Trainer(
+            dis_updater, (epochs, 'epoch'), out=args.outdir)
+        # Evaluate the model with the test dataset for each epoch
+        
+        dis_trainer.extend(CustomDiscriminatorEvaluator(dis, valid_iter, dis_reporter, converter, device))
 
-    # Save best models
-    dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
-                   trigger=training.triggers.MinValueTrigger('validation/main/dis_loss'))
-    dis_trainer.extend(extensions.snapshot_object(model, 'dis.acc.best', savefun=torch_save),
-                       trigger=training.triggers.MaxValueTrigger('validation/main/dis_acc'))
+        # Save best models
+        dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
+                    trigger=training.triggers.MinValueTrigger('validation/main/dis_loss'))
+        dis_trainer.extend(extensions.snapshot_object(model, 'dis.acc.best', savefun=torch_save),
+                        trigger=training.triggers.MaxValueTrigger('validation/main/dis_acc'))
 
-    # Write a log of evaluation statistics for each epoch
-    dis_trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
-    report_keys = ['epoch', 'iteration', 'main/loss_dis', 'validation/main/loss_dis', 'validation/main/acc_dis', 'elapsed_time']
-    dis_trainer.extend(extensions.PrintReport(
-        report_keys), trigger=(REPORT_INTERVAL, 'iteration'))
+        # Write a log of evaluation statistics for each epoch
+        dis_trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
+        report_keys = ['epoch', 'iteration', 'main/loss_dis', 'validation/main/loss_dis', 'validation/main/acc_dis', 'elapsed_time']
+        dis_trainer.extend(extensions.PrintReport(
+            report_keys), trigger=(REPORT_INTERVAL, 'iteration'))
 
-    dis_trainer.extend(extensions.ProgressBar(update_interval=REPORT_INTERVAL))
+        dis_trainer.extend(extensions.ProgressBar(update_interval=REPORT_INTERVAL))
+        return dis_trainer
     
-    # copy a new trainer object for later use
-    # shallow copy will keep the underlying references same.
-    # trainer object can only be used once.
-    trainer_copy = copy.copy(trainer)
-    dis_trainer_copy = copy.copy(dis_trainer)
+    
+    trainer = create_main_trainer(0.1)
     
     # Run the training
     trainer.run()
 
     # train discriminator
+    dis_trainer = create_dis_trainer(0.1)
     dis_trainer.run()
 
     # run adversarial training with policy gradient
@@ -507,16 +512,14 @@ def train(args):
         logging.info("starting adversarial training")
         # TRAIN GENERATOR
         # train generator with policy gradient
-        trainer_copy_temp = copy.copy(trainer_copy)
-        dis_trainer_copy_temp = copy.copy(dis_trainer_copy)
+        trainer = create_main_trainer(0.1)
+        dis_trainer = create_dis_trainer(0.1)
         
-        trainer_copy_temp.stop_trigger = (0.1, 'epoch')
-        trainer_copy_temp.run()
+        trainer.run()
 
         # TRAIN DISCRIMINATOR
         print('\nAdversarial Training Discriminator : ')
-        dis_trainer_copy_temp.stop_trigger = (0.2, 'epoch')
-        dis_trainer_copy_temp.run()
+        dis_trainer.run()
 
 
 
