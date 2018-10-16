@@ -134,7 +134,8 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     ys_pred = self.dis.batchClassify(xs)
                     # all positive examples
                     ys_true = torch.ones(ys.size()[0])
-                    loss = torch.nn.BCELoss(ys_pred, ys_true)
+                    loss_fn = torch.nn.BCELoss()
+                    loss = loss_fn(ys_pred, ys_true)
                     acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys.size()[0])
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
@@ -229,7 +230,8 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
 
         optimizer.zero_grad()
         out = self.dis.batchClassify(inp)
-        loss = torch.nn.BCELoss(out, target)
+        loss_fn = torch.nn.BCELoss()
+        loss = loss_fn(out, target)
         acc_dis = torch.sum((out>0.5)==(target>0.5)).data.item()/float(target.size()[0])
         # report the values
         self.dis_reporter.report_dis(float(loss), acc_dis)
@@ -381,7 +383,7 @@ def train(args):
     valid_iter = chainer.iterators.SerialIterator(
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)
-    
+
     def create_main_trainer(epochs, tag):
         # Set up a trainer
         updater = CustomUpdater(
@@ -477,13 +479,13 @@ def train(args):
     # FIXME: TOO DIRTY HACK
     setattr(dis_optimizer, "target", dis_reporter)
     setattr(dis_optimizer, "serialize", lambda s: dis_reporter.serialize(s))
-    
+
     def create_dis_trainer(epochs):
         dis_updater = CustomDiscriminatorUpdater(e2e, dis, args.grad_clip, copy.copy(train_iter), dis_optimizer, converter, dis_reporter, device, args.ngpu)
         dis_trainer = training.Trainer(
             dis_updater, (epochs, 'epoch'), out=args.outdir)
         # Evaluate the model with the test dataset for each epoch
-        
+
         dis_trainer.extend(CustomDiscriminatorEvaluator(dis, copy.copy(valid_iter), dis_reporter, converter, device))
         dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
@@ -500,10 +502,10 @@ def train(args):
 
         dis_trainer.extend(extensions.ProgressBar(update_interval=REPORT_INTERVAL))
         return dis_trainer
-    
-    
+
+
     trainer = create_main_trainer(0.01, "base")
-    
+
     # Run the training
     trainer.run()
 
@@ -521,7 +523,7 @@ def train(args):
         print("training generator with pg loss")
         trainer = create_main_trainer(0.1, "pgloss" + str(epoch))
         dis_trainer = create_dis_trainer(0.1)
-        
+
         trainer.run()
 
         # TRAIN DISCRIMINATOR
