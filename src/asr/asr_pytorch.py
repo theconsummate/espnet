@@ -214,7 +214,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
         # compute the negatives form e2e
-        loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true = self.e2e()
+        loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
 
         inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
