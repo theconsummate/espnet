@@ -137,6 +137,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     loss = torch.nn.BCELoss(ys_pred, ys_true)
                     acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys.size()[0])
                     self.target.report_dis(float(loss), acc)
+                    print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
                 summary.add(observation)
         self.dis.train()
 
@@ -377,7 +378,7 @@ def train(args):
     updater = CustomUpdater(
         model, args.grad_clip, train_iter, optimizer, converter, device, args.ngpu)
     
-    def create_main_trainer(epochs):
+    def create_main_trainer(epochs, tag):
         trainer = training.Trainer(
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)
@@ -411,19 +412,19 @@ def train(args):
                                             'epoch', file_name='acc.png'))
 
         # Save best models
-        trainer.extend(extensions.snapshot_object(model, 'model.loss.best', savefun=torch_save),
+        trainer.extend(extensions.snapshot_object(model, 'model.loss.best.' + tag, savefun=torch_save),
                     trigger=training.triggers.MinValueTrigger('validation/main/loss'))
         if mtl_mode is not 'ctc':
-            trainer.extend(extensions.snapshot_object(model, 'model.acc.best', savefun=torch_save),
+            trainer.extend(extensions.snapshot_object(model, 'model.acc.best.' + tag, savefun=torch_save),
                         trigger=training.triggers.MaxValueTrigger('validation/main/acc'))
 
         # save snapshot which contains model and optimizer states
-        trainer.extend(torch_snapshot(), trigger=(1, 'epoch'))
+        trainer.extend(torch_snapshot(filename=tag +'.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
 
         # epsilon decay in the optimizer
         if args.opt == 'adadelta':
             if args.criterion == 'acc' and mtl_mode is not 'ctc':
-                trainer.extend(restore_snapshot(model, args.outdir + '/model.acc.best', load_fn=torch_load),
+                trainer.extend(restore_snapshot(model, args.outdir + '/model.acc.best.' + tag, load_fn=torch_load),
                             trigger=CompareValueTrigger(
                                 'validation/main/acc',
                                 lambda best_value, current_value: best_value > current_value))
@@ -432,7 +433,7 @@ def train(args):
                                 'validation/main/acc',
                                 lambda best_value, current_value: best_value > current_value))
             elif args.criterion == 'loss':
-                trainer.extend(restore_snapshot(model, args.outdir + '/model.loss.best', load_fn=torch_load),
+                trainer.extend(restore_snapshot(model, args.outdir + '/model.loss.best.' + tag, load_fn=torch_load),
                             trigger=CompareValueTrigger(
                                 'validation/main/loss',
                                 lambda best_value, current_value: best_value < current_value))
@@ -479,7 +480,7 @@ def train(args):
         # Evaluate the model with the test dataset for each epoch
         
         dis_trainer.extend(CustomDiscriminatorEvaluator(dis, valid_iter, dis_reporter, converter, device))
-
+        dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
         dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
                     trigger=training.triggers.MinValueTrigger('validation/main/dis_loss'))
@@ -496,7 +497,7 @@ def train(args):
         return dis_trainer
     
     
-    trainer = create_main_trainer(0.1)
+    trainer = create_main_trainer(0.1, "base")
     
     # Run the training
     trainer.run()
@@ -508,17 +509,18 @@ def train(args):
     # run adversarial training with policy gradient
     ADV_TRAIN_EPOCHS = 5
     e2e.use_pgloss = True
+    print("starting adversarial training")
     for epoch in range(ADV_TRAIN_EPOCHS):
-        logging.info("starting adversarial training")
         # TRAIN GENERATOR
         # train generator with policy gradient
-        trainer = create_main_trainer(0.1)
+        print("training generator with pg loss")
+        trainer = create_main_trainer(0.1, "pgloss" + str(epoch))
         dis_trainer = create_dis_trainer(0.1)
         
         trainer.run()
 
         # TRAIN DISCRIMINATOR
-        print('\nAdversarial Training Discriminator : ')
+        print('Adversarial Training Discriminator')
         dis_trainer.run()
 
 
