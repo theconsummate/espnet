@@ -215,10 +215,18 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         optimizer.zero_grad()  # Clear the parameter gradients
         # compute the negatives form e2e
         loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
-
+        ys_hat = torch.max(ys_hat, 2)[1]
+        ys_hat.to(self.device)
+        logging.warning(ys_true.shape)
+        logging.warning(ys_hat.shape)
+        logging.warning(ys_true.type())
+        logging.warning(ys_hat.type())
         inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
         target[ys_true.size()[0]:] = 0
+
+        inp.to(self.device)
+        target.to(self.device)
 
         optimizer.zero_grad()
         out = self.dis.batchClassify(inp)

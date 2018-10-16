@@ -3,6 +3,7 @@ import torch.autograd as autograd
 import torch.nn as nn
 
 from asr_utils import parse_hypothesis
+from e2e_asr_th import to_cuda
 
 
 # taken from https://github.com/suragnair/seqGAN
@@ -21,6 +22,7 @@ class Discriminator(nn.Module):
 
     def init_hidden(self, batch_size):
         h = autograd.Variable(torch.zeros(2*2*1, batch_size, self.hidden_dim))
+        return to_cuda(self, h)
 
     def forward(self, input, hidden):
         # input dim                                                # batch_size x seq_len
