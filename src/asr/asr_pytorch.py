@@ -141,7 +141,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
 
                     ys_pred = self.dis.batchClassify(ys_pad)
                     # all positive examples
-                    ys_true = torch.ones(ys.size()[0])
+                    ys_true = torch.ones(ys_pred.size()[0])
                     loss_fn = torch.nn.BCELoss()
                     loss = loss_fn(ys_pred, ys_true)
                     acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys.size()[0])
@@ -400,11 +400,6 @@ def train(args):
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)
 
-        # Resume from a snapshot
-        if args.resume:
-            logging.info('resumed from %s' % args.resume)
-            torch_resume(args.resume, trainer)
-
         # Evaluate the model with the test dataset for each epoch
         trainer.extend(CustomEvaluator(model, copy.copy(valid_iter), reporter, converter, device))
 
@@ -514,11 +509,16 @@ def train(args):
 
     trainer = create_main_trainer(args.epochs, "base")
     dis_trainer = create_dis_trainer(args.epochs/3)
-
+    # Resume from a snapshot
+    if args.resume:
+        logging.info('resumed from %s' % args.resume)
+        print('resumed from %s' % args.resume)
+        torch_resume(args.resume, trainer)
     # Run the training
     trainer.run()
 
     # train discriminator
+    print("training discriminator")
     dis_trainer.run()
 
     # run adversarial training with policy gradient
