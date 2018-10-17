@@ -146,7 +146,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     ys_true = ys_true.to(self.device)
                     loss_fn = torch.nn.BCELoss()
                     loss = loss_fn(ys_pred, ys_true)
-                    acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys.size()[0])
+                    acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys_true.size()[0])
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
                 summary.add(observation)
