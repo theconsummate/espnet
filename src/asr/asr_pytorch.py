@@ -133,7 +133,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     #    will be converted to chainer variable later
                     xs, ilens, ys = self.converter(batch, self.device)
                     # convert the ys
-                    ys = [y[y != self.ignore_id] for y in ys_pad]  # parse padded ys
+                    ys = [y[y != -1] for y in ys]  # parse padded ys
 
                     eos = ys[0].new([self.eos])
                     ys_out = [torch.cat([y, eos], dim=0) for y in ys]
