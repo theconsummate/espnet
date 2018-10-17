@@ -142,7 +142,8 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     ys_pred = self.dis.batchClassify(ys_pad)
                     # all positive examples
                     ys_true = torch.ones(ys_pred.size()[0])
-                    ys_true.to(self.device)
+                    # move to cuda if required
+                    ys_true = ys_true.to(self.device)
                     loss_fn = torch.nn.BCELoss()
                     loss = loss_fn(ys_pred, ys_true)
                     acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys.size()[0])
