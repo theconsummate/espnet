@@ -107,6 +107,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         self.converter = converter
         self.device = device
         self.eos = eos
+        self.target = target
 
     # The core part of the update routine can be customized by overriding.
     def evaluate(self):
