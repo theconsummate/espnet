@@ -101,11 +101,12 @@ class CustomEvaluator(extensions.Evaluator):
 class CustomDiscriminatorEvaluator(extensions.Evaluator):
     '''Custom evaluater for pytorch'''
 
-    def __init__(self, dis, iterator, target, converter, device):
+    def __init__(self, dis, iterator, target, converter, device, eos):
         super(CustomDiscriminatorEvaluator, self).__init__(iterator, target)
         self.dis = dis
         self.converter = converter
         self.device = device
+        self.eos = eos
 
     # The core part of the update routine can be customized by overriding.
     def evaluate(self):
@@ -131,7 +132,14 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     # x: original json with loaded features
                     #    will be converted to chainer variable later
                     xs, ilens, ys = self.converter(batch, self.device)
-                    ys_pred = self.dis.batchClassify(xs)
+                    # convert the ys
+                    ys = [y[y != self.ignore_id] for y in ys_pad]  # parse padded ys
+
+                    eos = ys[0].new([self.eos])
+                    ys_out = [torch.cat([y, eos], dim=0) for y in ys]
+                    ys_pad = pad_list(ys_out, 0)
+
+                    ys_pred = self.dis.batchClassify(ys_pad)
                     # all positive examples
                     ys_true = torch.ones(ys.size()[0])
                     loss_fn = torch.nn.BCELoss()
@@ -486,7 +494,7 @@ def train(args):
             dis_updater, (epochs, 'epoch'), out=args.outdir)
         # Evaluate the model with the test dataset for each epoch
 
-        dis_trainer.extend(CustomDiscriminatorEvaluator(dis, copy.copy(valid_iter), dis_reporter, converter, device))
+        dis_trainer.extend(CustomDiscriminatorEvaluator(dis, copy.copy(valid_iter), dis_reporter, converter, device, odim -1))
         dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
         dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
@@ -505,12 +513,12 @@ def train(args):
 
 
     trainer = create_main_trainer(args.epochs, "base")
+    dis_trainer = create_dis_trainer(args.epochs/3)
 
     # Run the training
     trainer.run()
 
     # train discriminator
-    dis_trainer = create_dis_trainer(args.epochs/3)
     dis_trainer.run()
 
     # run adversarial training with policy gradient
