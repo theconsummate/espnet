@@ -496,9 +496,9 @@ def train(args):
         dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
         dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
-                    trigger=training.triggers.MinValueTrigger('validation/main/dis_loss'))
+                    trigger=training.triggers.MinValueTrigger('validation/main/loss_dis'))
         dis_trainer.extend(extensions.snapshot_object(model, 'dis.acc.best', savefun=torch_save),
-                        trigger=training.triggers.MaxValueTrigger('validation/main/dis_acc'))
+                        trigger=training.triggers.MaxValueTrigger('validation/main/acc_dis'))
 
         # Write a log of evaluation statistics for each epoch
         dis_trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
