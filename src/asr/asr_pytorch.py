@@ -204,7 +204,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
                  optimizer, converter, dis_reporter, device, ngpu):
         super(CustomDiscriminatorUpdater, self).__init__(train_iter, optimizer)
         self.e2e = e2e
-        self.dis = discriminator
+        self.model = discriminator
         self.grad_clip_threshold = grad_clip_threshold
         self.converter = converter
         self.device = device
@@ -240,7 +240,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         target = target.to(self.device)
 
         optimizer.zero_grad()
-        out = self.dis.batchClassify(inp)
+        out = self.model.batchClassify(inp)
         loss_fn = torch.nn.BCELoss()
         loss = loss_fn(out, target)
         acc_dis = torch.sum((out>0.5)==(target>0.5)).data.item()/float(target.size()[0])
@@ -253,7 +253,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         loss.detach()  # Truncate the graph
         # compute the gradient norm to check if it is normal or not
         grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.dis.parameters(), self.grad_clip_threshold)
+            self.model.parameters(), self.grad_clip_threshold)
         logging.info('grad norm={}'.format(grad_norm))
         if math.isnan(grad_norm):
             logging.warning('grad norm is nan. Do not update model.')
