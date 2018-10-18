@@ -376,7 +376,7 @@ def torch_load_without_dis(path, model):
         model_state_dict = torch.load(path, map_location=lambda storage, loc: storage)
     from collections import OrderedDict
     new_state_dict = OrderedDict()
-    for k, v in state_dict.items():
+    for k, v in model_state_dict.items():
         if "predictor.dis" not in k:
             new_state_dict[k] = v
     if hasattr(model, 'module'):
