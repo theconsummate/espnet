@@ -40,6 +40,8 @@ from e2e_asr_th import pad_list
 
 from e2e_asr_th import Reporter
 
+from asr_utils import torch_load_without_dis
+
 # for kaldi io
 import kaldi_io_py
 
@@ -555,7 +557,7 @@ def recog(args):
     logging.info('reading model parameters from ' + args.model)
     e2e = E2E(idim, odim, train_args, None, False)
     model = Loss(e2e, train_args.mtlalpha)
-    torch_load(args.model, model)
+    torch_load_without_dis(args.model, model)
 
     # read rnnlm
     if args.rnnlm:

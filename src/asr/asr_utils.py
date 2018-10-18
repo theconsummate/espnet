@@ -364,6 +364,29 @@ def torch_load(path, model):
     del model_state_dict
 
 
+def torch_load_without_dis(path, model):
+    """Function to load torch model states
+
+    :param str path: model file or snapshot file to be loaded
+    :param torch.nn.Module model: torch model
+    """
+    if 'snapshot' in path:
+        model_state_dict = torch.load(path, map_location=lambda storage, loc: storage)['model']
+    else:
+        model_state_dict = torch.load(path, map_location=lambda storage, loc: storage)
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        if "predictor.dis" not in k:
+            new_state_dict[k] = v
+    if hasattr(model, 'module'):
+        model.module.load_state_dict(new_state_dict)
+    else:
+        model.load_state_dict(new_state_dict)
+
+    del model_state_dict
+    del new_state_dict
+
 def torch_resume(snapshot_path, trainer):
     """Function to resume from snapshot for pytorch
 
