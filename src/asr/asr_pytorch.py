@@ -513,7 +513,7 @@ def train(args):
 
 
     trainer = create_main_trainer(args.epochs, "base")
-    dis_trainer = create_dis_trainer(args.epochs/3)
+    dis_trainer = create_dis_trainer(args.epochs*1.5)
     # Resume from a snapshot
     if args.resume:
         logging.info('resumed from %s' % args.resume)
