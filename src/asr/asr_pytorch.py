@@ -497,10 +497,10 @@ def train(args):
         dis_trainer.extend(CustomDiscriminatorEvaluator(dis, copy.copy(valid_iter), dis_reporter, converter, device, odim -1))
         dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
-        dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
-                    trigger=training.triggers.MinValueTrigger('validation/main/loss_dis'))
-        dis_trainer.extend(extensions.snapshot_object(model, 'dis.acc.best', savefun=torch_save),
-                        trigger=training.triggers.MaxValueTrigger('validation/main/acc_dis'))
+        #dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
+        #            trigger=training.triggers.MinValueTrigger('validation/main/loss_dis'))
+        #dis_trainer.extend(extensions.snapshot_object(model, 'dis.acc.best', savefun=torch_save),
+        #                trigger=training.triggers.MaxValueTrigger('validation/main/acc_dis'))
 
         # Write a log of evaluation statistics for each epoch
         dis_trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
@@ -538,6 +538,9 @@ def train(args):
         dis_trainer = create_dis_trainer(5)
 
         trainer.run()
+        if epoch == (ADV_TRAIN_EPOCHS - 1):
+            # no need to train the discriminator at the last loop, break
+            break
 
         # TRAIN DISCRIMINATOR
         print('Adversarial Training Discriminator')
