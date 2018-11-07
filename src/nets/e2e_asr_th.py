@@ -351,7 +351,7 @@ class E2E(torch.nn.Module):
             rewards = self.dis.batchClassify(ys_true)
             loss_pg = self.batchPGLoss(ys_hat, ys_true, rewards)
 
-        return loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true
+        return loss_ctc, loss_att, acc, loss_pg, ys_hat.data, ys_true.data
 
     def recognize(self, x, recog_args, char_list, rnnlm=None):
         '''E2E beam search
