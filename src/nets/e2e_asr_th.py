@@ -329,7 +329,7 @@ class E2E(torch.nn.Module):
         :rtype: float
         '''
         # 1. encoder
-        print(xs_pad.size())
+        # print(xs_pad.size())
         hs_pad, hlens = self.enc(xs_pad, ilens)
 
         # 2. CTC loss
