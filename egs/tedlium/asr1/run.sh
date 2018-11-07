@@ -268,7 +268,7 @@ if [ ${stage} -le 5 ]; then
             --maxlenratio ${maxlenratio} \
             --minlenratio ${minlenratio} \
             --ctc-weight ${ctc_weight} \
-            --rnnlm ${lmexpdir}/rnnlm.model.best \
+#            --rnnlm ${lmexpdir}/rnnlm.model.best \
             --lm-weight ${lm_weight} &
         wait
 

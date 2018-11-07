@@ -10,9 +10,9 @@ mkdir -p db
 cd db  ### Note: the rest of this script is executed from the directory 'db'.
 
 # TED-LIUM database:
-if [[ $(hostname -f) == *.clsp.jhu.edu ]] ; then
+if [[ $(hostname -f) == *.ims.uni-stuttgart.de ]] ; then
   if [ ! -e TEDLIUM_release2 ]; then
-    ln -sf /export/corpora5/TEDLIUM_release2
+    ln -sf /resources/asr-data/TEDLIUM_release2
   fi
   echo "$0: linking the TEDLIUM data from /export/corpora5/TEDLIUM_release2"
 else

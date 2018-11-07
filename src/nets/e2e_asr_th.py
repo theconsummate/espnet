@@ -162,7 +162,7 @@ class Loss(torch.nn.Module):
         if loss_pg:
             self.loss += float(loss_pg)
             # logging.warning("added pg loss")
-            print("policy gradient learning loss: " + str(float(self.loss)))
+            # print("policy gradient learning loss: " + str(float(self.loss)))
 
         loss_data = float(self.loss)
         if loss_data < CTC_LOSS_THRESHOLD and not math.isnan(loss_data):
@@ -329,6 +329,7 @@ class E2E(torch.nn.Module):
         :rtype: float
         '''
         # 1. encoder
+        print(xs_pad.size())
         hs_pad, hlens = self.enc(xs_pad, ilens)
 
         # 2. CTC loss
