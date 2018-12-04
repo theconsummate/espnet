@@ -529,7 +529,7 @@ def train(args):
     dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs)
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_seqgan_dispretrain_1.5/results/dis.snapshot.ep.22"
-    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.2"
+    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
     torch_resume(dis_snapshot_path, dis_trainer)
     dis_trainer.run()
 
@@ -537,7 +537,7 @@ def train(args):
     # run adversarial training with policy gradient
     ADV_TRAIN_EPOCHS = 5
     e2e.use_pgloss = True
-    e2e.train()
+    # e2e.train()
     print("starting adversarial training")
     for epoch in range(ADV_TRAIN_EPOCHS):
         # TRAIN GENERATOR
@@ -546,6 +546,8 @@ def train(args):
         trainer = create_main_trainer(1, "pgloss" + str(epoch))
         dis_trainer = create_dis_trainer(5)
 
+        e2e.train()
+        dis.eval()
         trainer.run()
         if epoch == (ADV_TRAIN_EPOCHS - 1):
             # no need to train the discriminator at the last loop, break
@@ -553,6 +555,8 @@ def train(args):
 
         # TRAIN DISCRIMINATOR
         print('Adversarial Training Discriminator')
+        e2e.eval()
+        dis.train()
         dis_trainer.run()
 
 
