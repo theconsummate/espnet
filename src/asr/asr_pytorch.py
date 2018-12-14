@@ -569,8 +569,8 @@ def train(args):
     dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs, train_noise_iter, valid_noise_iter)
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_seqgan_dispretrain_1.5/results/dis.snapshot.ep.22"
-    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
-    torch_resume(dis_snapshot_path, dis_trainer)
+    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
+    # torch_resume(dis_snapshot_path, dis_trainer)
     dis_trainer.run()
 
 
