@@ -379,11 +379,13 @@ def train(args):
 
     # read json data
     with open(args.train_json, 'rb') as f:
-        train_json = json.load(f)['clean']['utts']
-        train_noise_json = json.load(f)['noise']['utts']
+        fjson = json.load(f)
+        train_json = fjson['clean']['utts']
+        train_noise_json = fjson['noise']['utts']
     with open(args.valid_json, 'rb') as f:
-        valid_json = json.load(f)['clean']['utts']
-        valid_noise_json = json.load(f)['noise']['utts']
+        fjson = json.load(f)
+        valid_json = fjson['clean']['utts']
+        valid_noise_json = fjson['noise']['utts']
 
     train_full_json = {}
     valid_full_json = {}
