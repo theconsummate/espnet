@@ -53,7 +53,7 @@ def label_smoothing_dist(odim, lsm_type, transcript=None, blank=0):
     '''
     if transcript is not None:
         with open(transcript, 'rb') as f:
-            trans_json = json.load(f)['utts']
+            trans_json = json.load(f)['clean']['utts']
 
     if lsm_type == 'unigram':
         assert transcript is not None, 'transcript is required for %s label smoothing' % lsm_type
