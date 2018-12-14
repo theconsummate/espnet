@@ -317,7 +317,7 @@ def train(args):
 
     # get input and output dimension info
     with open(args.valid_json, 'rb') as f:
-        valid_json = json.load(f)['utts']
+        valid_json = json.load(f)['clean']['utts']
     utts = list(valid_json.keys())
     idim = int(valid_json[utts[0]]['input'][0]['shape'][1])
     odim = int(valid_json[utts[0]]['output'][0]['shape'][1])
