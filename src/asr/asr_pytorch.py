@@ -379,9 +379,21 @@ def train(args):
 
     # read json data
     with open(args.train_json, 'rb') as f:
-        train_json = json.load(f)['utts']
+        train_json = json.load(f)['clean']['utts']
+        train_noise_json = json.load(f)['noise']['utts']
     with open(args.valid_json, 'rb') as f:
-        valid_json = json.load(f)['utts']
+        valid_json = json.load(f)['clean']['utts']
+        valid_noise_json = json.load(f)['noise']['utts']
+
+    train_full_json = {}
+    valid_full_json = {}
+    for c, n in zip(train_json.keys(), train_noise_json.keys()):
+        train_full_json[c + "_clean"] = train_json[c]
+        train_full_json[n + "_noise"] = train_noise_json[n]
+
+    for c, n in zip(valid_json.keys(), valid_noise_json.keys()):
+        valid_full_json[c + "_clean"] = valid_json[c]
+        valid_full_json[n + "_noise"] = valid_noise_json[n]
 
     # make minibatch list (variable length)
     train = make_batchset(train_json, args.batch_size,
@@ -397,16 +409,44 @@ def train(args):
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)
 
-    def create_main_trainer(epochs, tag):
+    # now for noisy data
+    train_noise = make_batchset(train_noise_json, args.batch_size,
+                          args.maxlen_in, args.maxlen_out, args.minibatches)
+    valid_noise = make_batchset(valid_noise_json, args.batch_size,
+                          args.maxlen_in, args.maxlen_out, args.minibatches)
+    # hack to make batchsze argument as 1
+    # actual bathsize is included in a list
+    train_noise_iter = chainer.iterators.MultiprocessIterator(
+        TransformDataset(train_noise, converter.transform),
+        batch_size=1, n_processes=1, n_prefetch=8)
+    valid_noise_iter = chainer.iterators.SerialIterator(
+        TransformDataset(valid_noise, converter.transform),
+        batch_size=1, repeat=False, shuffle=False)
+
+    # now for both clean and noise data
+    train_full = make_batchset(train_full_json, args.batch_size,
+                          args.maxlen_in, args.maxlen_out, args.minibatches)
+    valid_full = make_batchset(valid_full_json, args.batch_size,
+                          args.maxlen_in, args.maxlen_out, args.minibatches)
+    # hack to make batchsze argument as 1
+    # actual bathsize is included in a list
+    train_full_iter = chainer.iterators.MultiprocessIterator(
+        TransformDataset(train_full, converter.transform),
+        batch_size=1, n_processes=1, n_prefetch=8)
+    valid_full_iter = chainer.iterators.SerialIterator(
+        TransformDataset(valid_full, converter.transform),
+        batch_size=1, repeat=False, shuffle=False)
+
+    def create_main_trainer(epochs, tag, training_iter, validation_iter):
         # Set up a trainer
         updater = CustomUpdater(
-            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu)
+            model, args.grad_clip, copy.copy(training_iter), optimizer, converter, device, args.ngpu)
         trainer = training.Trainer(
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)
 
         # Evaluate the model with the test dataset for each epoch
-        trainer.extend(CustomEvaluator(model, copy.copy(valid_iter), reporter, converter, device))
+        trainer.extend(CustomEvaluator(model, copy.copy(validation_iter), reporter, converter, device))
 
         # Save attention weight each epoch
         if args.num_save_attention > 0 and args.mtlalpha != 1.0:
@@ -488,13 +528,13 @@ def train(args):
     setattr(dis_optimizer, "target", dis_reporter)
     setattr(dis_optimizer, "serialize", lambda s: dis_reporter.serialize(s))
 
-    def create_dis_trainer(epochs):
-        dis_updater = CustomDiscriminatorUpdater(e2e, dis, args.grad_clip, copy.copy(train_iter), dis_optimizer, converter, dis_reporter, device, args.ngpu)
+    def create_dis_trainer(epochs, training_iter, validation_iter):
+        dis_updater = CustomDiscriminatorUpdater(e2e, dis, args.grad_clip, copy.copy(training_iter), dis_optimizer, converter, dis_reporter, device, args.ngpu)
         dis_trainer = training.Trainer(
             dis_updater, (epochs, 'epoch'), out=args.outdir)
         # Evaluate the model with the test dataset for each epoch
 
-        dis_trainer.extend(CustomDiscriminatorEvaluator(dis, copy.copy(valid_iter), dis_reporter, converter, device, odim -1))
+        dis_trainer.extend(CustomDiscriminatorEvaluator(dis, copy.copy(validation_iter), dis_reporter, converter, device, odim -1))
         dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
         #dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
@@ -512,7 +552,7 @@ def train(args):
         return dis_trainer
 
 
-    trainer = create_main_trainer(args.epochs, "base")
+    trainer = create_main_trainer(args.epochs, "base", train_iter, valid_iter)
     dis_pre_train_epochs = 22
     # Resume from a snapshot
     if args.resume:
@@ -527,7 +567,7 @@ def train(args):
     print("setting e2e to eval mode")
     e2e.eval()
     dis.train()
-    dis_trainer = create_dis_trainer(dis_pre_train_epochs)
+    dis_trainer = create_dis_trainer(dis_pre_train_epochs, train_noise_iter, valid_noise_iter)
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_seqgan_dispretrain_1.5/results/dis.snapshot.ep.22"
     dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
     torch_resume(dis_snapshot_path, dis_trainer)
@@ -543,8 +583,8 @@ def train(args):
         # TRAIN GENERATOR
         # train generator with policy gradient
         print("training generator with pg loss")
-        trainer = create_main_trainer(1, "pgloss" + str(epoch))
-        dis_trainer = create_dis_trainer(5)
+        trainer = create_main_trainer(1, "pgloss" + str(epoch), train_full_iter, valid_full_iter)
+        dis_trainer = create_dis_trainer(5, train_full_iter, valid_full_iter)
 
         e2e.train()
         # dis.eval()
