@@ -547,7 +547,7 @@ def train(args):
         dis_trainer = create_dis_trainer(5)
 
         e2e.train()
-        dis.eval()
+        # dis.eval()
         trainer.run()
         if epoch == (ADV_TRAIN_EPOCHS - 1):
             # no need to train the discriminator at the last loop, break
