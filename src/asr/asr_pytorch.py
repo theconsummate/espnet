@@ -317,7 +317,7 @@ def train(args):
 
     # get input and output dimension info
     with open(args.valid_json, 'rb') as f:
-        valid_json = json.load(f)['clean']['utts']
+        valid_json = json.load(f)['utts']
     utts = list(valid_json.keys())
     idim = int(valid_json[utts[0]]['input'][0]['shape'][1])
     odim = int(valid_json[utts[0]]['output'][0]['shape'][1])
@@ -379,13 +379,15 @@ def train(args):
 
     # read json data
     with open(args.train_json, 'rb') as f:
-        fjson = json.load(f)
-        train_json = fjson['clean']['utts']
-        train_noise_json = fjson['noise']['utts']
+        train_json = json.load(f)['utts']
     with open(args.valid_json, 'rb') as f:
-        fjson = json.load(f)
-        valid_json = fjson['clean']['utts']
-        valid_noise_json = fjson['noise']['utts']
+        valid_json = json.load(f)['utts']
+
+# assuming that data.json and data_noise.json are present
+    with open(args.train_json[:-5] + "_noise.json", 'rb') as f:
+        train_noise_json = json.load(f)['utts']
+    with open(args.valid_json[:-5] + "_noise.json", 'rb') as f:
+        valid_noise_json = json.load(f)['utts']
 
     train_full_json = {}
     valid_full_json = {}
