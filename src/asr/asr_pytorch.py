@@ -556,7 +556,7 @@ def train(args):
         return dis_trainer
 
 
-    trainer = create_main_trainer(args.epochs, "base", train_iter, valid_iter)
+    trainer = create_main_trainer(15, "base", train_iter, valid_iter)
     dis_pre_train_epochs = 22
     # Resume from a snapshot
     if args.resume:
@@ -573,8 +573,8 @@ def train(args):
     dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs, train_noise_iter, valid_noise_iter)
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_seqgan_dispretrain_1.5/results/dis.snapshot.ep.22"
-    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
-    # torch_resume(dis_snapshot_path, dis_trainer)
+    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj-split-landline/asr1/exp/train_si284_pytorch_advfull/results/dis.snapshot.ep.22"
+    torch_resume(dis_snapshot_path, dis_trainer)
     dis_trainer.run()
 
 
@@ -587,8 +587,19 @@ def train(args):
         # TRAIN GENERATOR
         # train generator with policy gradient
         print("training generator with pg loss")
-        trainer = create_main_trainer(1, "pgloss" + str(epoch), train_full_iter, valid_full_iter)
-        dis_trainer = create_dis_trainer(5, train_full_iter, valid_full_iter)
+        if args.epochs == 15:
+            print("dis-full, gen-full")
+            trainer = create_main_trainer(1, "pgloss" + str(epoch), train_full_iter, valid_full_iter)
+            dis_trainer = create_dis_trainer(5, train_full_iter, valid_full_iter)
+        elif args.epochs == 16:
+            print("dis-noise, gen-full")
+            trainer = create_main_trainer(1, "pgloss" + str(epoch), train_full_iter, valid_full_iter)
+            dis_trainer = create_dis_trainer(5, train_noise_iter, valid_noise_iter)
+        elif args.epochs == 17:
+            print("dis-clean, gen-full")
+            trainer = create_main_trainer(1, "pgloss" + str(epoch), train_full_iter, valid_full_iter)
+            dis_trainer = create_dis_trainer(5, train_iter, valid_iter)
+
 
         e2e.train()
         # dis.eval()
