@@ -233,10 +233,16 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # add 1 to make start index from 1
         # ys_hat += torch.ones(ys_hat.size()).long().to(self.device)
         # ys_hat.to(self.device)
+        for i in range(ys_true.size()[0]):
+             pad_in = (ys_true[i] == 0).nonzero().cpu().numpy()
+             if not pad_in.size == 0:
+                 pad_index = pad_in[0][0]
+                 ys_hat[i][pad_index:] = 0
 
         inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
-        target[ys_true.size()[0]:] = 0
+        target[ys_true.size()[0]:] = 0.1
+        target[:ys_true.size()[0]] = 0.9
 
         inp = inp.to(self.device)
         target = target.to(self.device)
@@ -529,8 +535,8 @@ def train(args):
     dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs)
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_seqgan_dispretrain_1.5/results/dis.snapshot.ep.22"
-    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
-    torch_resume(dis_snapshot_path, dis_trainer)
+    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
+    # torch_resume(dis_snapshot_path, dis_trainer)
     dis_trainer.run()
 
 
