@@ -224,57 +224,57 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # logging.warning("discriminator training loop.")
         batch = train_iter.next()
         xs_pad, ilens, ys_pad = self.converter(batch, self.device)
-        print(ilens)
-        print("printing ys_pad")
-        print(ys_pad)
-        print(ys_pad.size())
+        #print(ilens)
+        #print("printing ys_pad")
+        #print(ys_pad)
+        #print(ys_pad.size())
 
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
         # compute the negatives form e2e
         _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
-        print("printing ys true")
-        print(ys_true.size())
-        print(ys_true)
-        print("ys_hat shape")
-        print(ys_hat.size())
+        #print("printing ys true")
+        #print(ys_true.size())
+        #print(ys_true)
+        #print("ys_hat shape")
+        #print(ys_hat.size())
         ys_hat = torch.max(ys_hat, 2)[1]
-        print("ys_hat shape after max")
-        print(ys_hat.size())
+        #print("ys_hat shape after max")
+        #print(ys_hat.size())
         for i in range(ys_true.size()[0]):
             pad_in = (ys_true[i] == 0).nonzero().cpu().numpy()
-            print(pad_in.size)
             if not pad_in.size == 0:
                 pad_index = pad_in[0][0]
                 ys_hat[i][pad_index:] = 0
-        print(ys_hat)
+        #print(ys_hat)
         # add 1 to make start index from 1
         # ys_hat += torch.ones(ys_hat.size()).long().to(self.device)
         # ys_hat.to(self.device)
 
         inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
-        print("input")
-        print(inp.size())
-        print(inp)
+        #print("input")
+        #print(inp.size())
+        #print(inp)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
-        print("target")
-        print(target.size())
-        target[ys_true.size()[0]:] = 0
-        print(target)
+        #print("target")
+        #print(target.size())
+        target[ys_true.size()[0]:] = 0.1
+        target[:ys_true.size()[0]] = 0.9
+        #print(target)
 
         inp = inp.to(self.device)
         target = target.to(self.device)
 
         optimizer.zero_grad()
         out = self.model.batchClassify(inp)
-        print("out")
-        print(out.size())
-        print(out)
+        #print("out")
+        #print(out.size())
+        #print(out)
         loss_fn = torch.nn.BCELoss()
         loss = loss_fn(out, target)
         acc_dis = torch.sum((out>0.5)==(target>0.5)).data.item()/float(target.size()[0])
         # report the values
-        print(loss, acc_dis)
+        #print(loss, acc_dis)
         self.dis_reporter.report_dis(float(loss), acc_dis)
 
         # backprop
@@ -285,8 +285,6 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         grad_norm = torch.nn.utils.clip_grad_norm_(
             self.model.parameters(), self.grad_clip_threshold)
         logging.info('grad norm={}'.format(grad_norm))
-        import sys
-        sys.exit()
         if math.isnan(grad_norm):
             logging.warning('grad norm is nan. Do not update model.')
         else:
@@ -555,7 +553,7 @@ def train(args):
     # discriminator is defined at the top
     dis = dis.to(device)
     # train discriminator
-    dis_optimizer = torch.optim.Adagrad(dis.parameters())
+    dis_optimizer = torch.optim.SGD(dis.parameters(), lr = 0.01, momentum=0.9)
     dis_reporter = Reporter()
 
     # FIXME: TOO DIRTY HACK
@@ -587,7 +585,7 @@ def train(args):
 
 
     trainer = create_main_trainer(15, "base", train_iter, valid_iter)
-    dis_pre_train_epochs = 22
+    dis_pre_train_epochs = 10
     # Resume from a snapshot
     if args.resume:
         logging.info('resumed from %s' % args.resume)
@@ -603,8 +601,8 @@ def train(args):
     dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs, train_noise_iter, valid_noise_iter)
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_seqgan_dispretrain_1.5/results/dis.snapshot.ep.22"
-    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj-split-landline/asr1/exp/train_si284_pytorch_advfull/results/dis.snapshot.ep.22"
-    # torch_resume(dis_snapshot_path, dis_trainer)
+    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj-split-landline/asr1/exp/train_si284_pytorch_disfull_genfull/results/dis.snapshot.ep.10"
+    torch_resume(dis_snapshot_path, dis_trainer)
     dis_trainer.run()
 
 
@@ -620,15 +618,15 @@ def train(args):
         if args.epochs == 15:
             print("dis-full, gen-full")
             trainer = create_main_trainer(1, "pgloss" + str(epoch), train_full_iter, valid_full_iter)
-            dis_trainer = create_dis_trainer(5, train_full_iter, valid_full_iter)
+            dis_trainer = create_dis_trainer(3, train_full_iter, valid_full_iter)
         elif args.epochs == 16:
             print("dis-noise, gen-full")
             trainer = create_main_trainer(1, "pgloss" + str(epoch), train_full_iter, valid_full_iter)
-            dis_trainer = create_dis_trainer(5, train_noise_iter, valid_noise_iter)
+            dis_trainer = create_dis_trainer(3, train_noise_iter, valid_noise_iter)
         elif args.epochs == 17:
             print("dis-clean, gen-full")
             trainer = create_main_trainer(1, "pgloss" + str(epoch), train_full_iter, valid_full_iter)
-            dis_trainer = create_dis_trainer(5, train_iter, valid_iter)
+            dis_trainer = create_dis_trainer(3, train_iter, valid_iter)
 
 
         e2e.train()
