@@ -487,7 +487,7 @@ def train(args):
     # discriminator is defined at the top
     dis = dis.to(device)
     # train discriminator
-    dis_optimizer = torch.optim.Adagrad(dis.parameters())
+    dis_optimizer = torch.optim.SGD(dis.parameters(), lr = 0.01, momentum=0.9)
     dis_reporter = Reporter()
 
     # FIXME: TOO DIRTY HACK
@@ -519,7 +519,7 @@ def train(args):
 
 
     trainer = create_main_trainer(args.epochs, "base")
-    dis_pre_train_epochs = 22
+    dis_pre_train_epochs = 10
     # Resume from a snapshot
     if args.resume:
         logging.info('resumed from %s' % args.resume)
@@ -550,7 +550,7 @@ def train(args):
         # train generator with policy gradient
         print("training generator with pg loss")
         trainer = create_main_trainer(1, "pgloss" + str(epoch))
-        dis_trainer = create_dis_trainer(5)
+        dis_trainer = create_dis_trainer(3)
 
         e2e.train()
         # dis.eval()
