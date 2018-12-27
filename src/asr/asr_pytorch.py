@@ -487,7 +487,8 @@ def train(args):
     # discriminator is defined at the top
     dis = dis.to(device)
     # train discriminator
-    dis_optimizer = torch.optim.SGD(dis.parameters(), lr = 0.01, momentum=0.9)
+    dis_optimizer = torch.optim.Adagrad(dis.parameters())
+    # dis_optimizer = torch.optim.SGD(dis.parameters(), lr = 0.01, momentum=0.9)
     dis_reporter = Reporter()
 
     # FIXME: TOO DIRTY HACK
