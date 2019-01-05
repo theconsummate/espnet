@@ -482,3 +482,16 @@ def add_results_to_json(js, nbest_hyps, char_list):
             logging.info('prediction : %s' % out_dic['rec_text'])
 
     return new_js
+
+
+def clip_sequence(ys_hat, ys_true):
+    ys_hat = torch.max(ys_hat, 2)[1]
+    # add 1 to make start index from 1
+    # ys_hat += torch.ones(ys_hat.size()).long().to(self.device)
+    # ys_hat.to(self.device)
+    for i in range(ys_true.size()[0]):
+         pad_in = (ys_true[i] == 0).nonzero().cpu().numpy()
+         if not pad_in.size == 0:
+             pad_index = pad_in[0][0]
+             ys_hat[i][pad_index:] = 0
+    return ys_hat

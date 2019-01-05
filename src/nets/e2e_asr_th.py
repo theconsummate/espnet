@@ -145,7 +145,7 @@ class Loss(torch.nn.Module):
         :rtype: torch.Tensor
         '''
         self.loss = None
-        loss_ctc, loss_att, acc, loss_pg, ys_hat, ys_true = self.predictor(xs_pad, ilens, ys_pad)
+        loss_ctc, loss_att, acc, _, _, _ = self.predictor(xs_pad, ilens, ys_pad)
         alpha = self.mtlalpha
         if alpha == 0:
             self.loss = loss_att
@@ -159,8 +159,8 @@ class Loss(torch.nn.Module):
             self.loss = alpha * loss_ctc + (1 - alpha) * loss_att
             loss_att_data = float(loss_att)
             loss_ctc_data = float(loss_ctc)
-        if loss_pg:
-            self.loss += -2000/loss_pg
+        # if loss_pg:
+        #     self.loss += -2000/loss_pg
             # logging.warning("added pg loss")
             # print("policy gradient learning loss: " + str(float(self.loss)))
 
@@ -190,8 +190,9 @@ class E2E(torch.nn.Module):
         self.mtlalpha = args.mtlalpha
 
         # discriminator
-        self.dis = dis
-        self.use_pgloss = use_pgloss
+        # self.dis = dis
+        # self.use_pgloss = use_pgloss
+        # self.rollout = rollout
 
         # below means the last number becomes eos/sos ID
         # note that sos/eos IDs are identical
@@ -346,10 +347,10 @@ class E2E(torch.nn.Module):
             loss_att, acc, ys_hat, ys_true = self.dec(hs_pad, hlens, ys_pad)
 
         loss_pg = None
-        if self.use_pgloss:
-            # logging.warning(self.use_pgloss)
-            rewards = self.dis.batchClassify(ys_true)
-            loss_pg = self.batchPGLoss(ys_hat, ys_true, rewards)
+        # if self.use_pgloss:
+        #     # logging.warning(self.use_pgloss)
+        #     rewards = self.get_reward(ys_true, ys_hat, 16)
+        #     loss_pg = self.batchPGLoss(ys_hat, ys_true, rewards)
 
         return loss_ctc, loss_att, acc, loss_pg, ys_hat.data, ys_true.data
 
@@ -389,32 +390,6 @@ class E2E(torch.nn.Module):
             self.train()
         return y
 
-    def batchPGLoss(self, inp, target, reward):
-        """
-        Returns a pseudo-loss that gives corresponding policy gradients (on calling .backward()).
-        Inspired by the example in http://karpathy.github.io/2016/05/31/rl/
-
-        Inputs: inp, target
-            - inp: batch_size x seq_len
-            - target: batch_size x seq_len
-            - reward: batch_size (discriminator reward for each sentence, applied to each token of the corresponding
-                      sentence)
-
-            inp should be target with <s> (start letter) prepended
-        """
-
-        batch_size, seq_len, vocab_size = inp.size()
-        inp = inp.permute(1, 0, 2)          # seq_len x batch_size x vocab_size
-        target = target.permute(1, 0)    # seq_len x batch_size
-
-        loss = 0
-        for i in range(seq_len):
-            out = inp[i]
-            # TODO: should h be detached from graph (.detach())?
-            for j in range(batch_size):
-                loss += -out[j][target.data[i][j]]*reward[j]     # log(P(y_t|Y_1:Y_{t-1})) * Q
-
-        return loss/batch_size
 
     def calculate_all_attentions(self, xs_pad, ilens, ys_pad):
         '''E2E attention calculation

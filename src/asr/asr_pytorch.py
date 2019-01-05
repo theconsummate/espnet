@@ -55,7 +55,8 @@ import numpy as np
 matplotlib.use('Agg')
 
 # seqgan related
-from seqgan import Discriminator
+from seqganCNNRollout import Discriminator, Rollout, PGLoss
+from asr_utils import clip_sequence
 
 REPORT_INTERVAL = 100
 
@@ -134,22 +135,25 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     # read scp files
                     # x: original json with loaded features
                     #    will be converted to chainer variable later
-                    xs, ilens, ys = self.converter(batch, self.device)
-                    # convert the ys
-                    ys = [y[y != -1] for y in ys]  # parse padded ys
+                    xs_pad, ilens, ys_pad = self.converter(batch, self.device)
 
-                    eos = ys[0].new([self.eos])
-                    ys_out = [torch.cat([y, eos], dim=0) for y in ys]
-                    ys_pad = pad_list(ys_out, 0)
+                    # compute the negatives form e2e
+                    _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
+                    ys_hat = clip_sequence(ys_hat, ys_true)
 
-                    ys_pred = self.dis.batchClassify(ys_pad)
-                    # all positive examples
-                    ys_true = torch.ones(ys_pred.size()[0])
-                    # move to cuda if required
-                    ys_true = ys_true.to(self.device)
-                    loss_fn = torch.nn.BCELoss()
-                    loss = loss_fn(ys_pred, ys_true)
-                    acc = torch.sum((ys_pred>0.5)==(ys_true>0.5)).data.item()/float(ys_true.size()[0])
+                    inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
+                    target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
+                    target[ys_true.size()[0]:] = 0.1
+                    target[:ys_true.size()[0]] = 0.9
+
+                    inp = inp.to(self.device)
+                    target = target.to(self.device)
+
+                    out = self.dis(inp)
+                    loss_fn = torch.nn.NLLLoss()
+                    loss = loss_fn(out, target)
+                    pred = out.data.max(1)[1]
+                    acc = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
                 summary.add(observation)
@@ -161,13 +165,16 @@ class CustomUpdater(training.StandardUpdater):
     '''Custom updater for pytorch'''
 
     def __init__(self, model, grad_clip_threshold, train_iter,
-                 optimizer, converter, device, ngpu):
+                 optimizer, converter, device, ngpu, rollout, dis, pg_loss):
         super(CustomUpdater, self).__init__(train_iter, optimizer)
         self.model = model
         self.grad_clip_threshold = grad_clip_threshold
         self.converter = converter
         self.device = device
         self.ngpu = ngpu
+        self.rollout = rollout
+        self.dis = dis
+        self.pg_loss = pg_loss
 
     # The core part of the update routine can be customized by overriding.
     def update_core(self):
@@ -178,16 +185,25 @@ class CustomUpdater(training.StandardUpdater):
 
         # Get the next batch ( a list of json files)
         batch = train_iter.next()
-        x = self.converter(batch, self.device)
+        xs_pad, ilens, ys_pad = self.converter(batch, self.device)
 
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
-        if self.ngpu > 1:
-            loss = 1. / self.ngpu * self.model(*x)
-            loss.backward(loss.new_ones(self.ngpu))  # Backprop
+        if rollout:
+            # this is during adversarial training
+            rewards = torch.tensor(rollout.get_reward(xs_pad, ilens, ys_pad, 16, dis))
+            rewards = rewards.to(self.device)
+            _, _, _, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
+            ys_hat = clip_sequence(ys_hat, ys_true)
+            loss = self.pg_loss(ys_hat, ys_true, rewards)
+            loss.backward()
         else:
-            loss = self.model(*x)
-            loss.backward()  # Backprop
+            if self.ngpu > 1:
+                loss = 1. / self.ngpu * self.model(xs_pad, ilens, ys_pad)
+                loss.backward(loss.new_ones(self.ngpu))  # Backprop
+            else:
+                loss = self.model(xs_pad, ilens, ys_pad)
+                loss.backward()  # Backprop
         loss.detach()  # Truncate the graph
         # compute the gradient norm to check if it is normal or not
         grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -229,15 +245,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         optimizer.zero_grad()  # Clear the parameter gradients
         # compute the negatives form e2e
         _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
-        ys_hat = torch.max(ys_hat, 2)[1]
-        # add 1 to make start index from 1
-        # ys_hat += torch.ones(ys_hat.size()).long().to(self.device)
-        # ys_hat.to(self.device)
-        for i in range(ys_true.size()[0]):
-             pad_in = (ys_true[i] == 0).nonzero().cpu().numpy()
-             if not pad_in.size == 0:
-                 pad_index = pad_in[0][0]
-                 ys_hat[i][pad_index:] = 0
+        ys_hat = clip_sequence(ys_hat, ys_true)
 
         inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
@@ -248,10 +256,11 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         target = target.to(self.device)
 
         optimizer.zero_grad()
-        out = self.model.batchClassify(inp)
-        loss_fn = torch.nn.BCELoss()
+        out = self.model(inp)
+        loss_fn = torch.nn.NLLLoss()
         loss = loss_fn(out, target)
-        acc_dis = torch.sum((out>0.5)==(target>0.5)).data.item()/float(target.size()[0])
+        pred = out.data.max(1)[1]
+        acc_dis = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
         # report the values
         self.dis_reporter.report_dis(float(loss), acc_dis)
 
@@ -342,7 +351,15 @@ def train(args):
         logging.info('Multitask learning mode')
 
     # specify model architecture
-    dis = Discriminator(64, 64, 52)
+    # dis = Discriminator(64, 64, 52)
+    # discriminator parameters
+    d_num_class = 2
+    d_embed_dim = 64
+    d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
+    d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
+    d_dropout_prob = 0.2
+    #
+    dis = Discriminator(d_num_class, 52, d_embed_dim, d_filter_sizes, d_num_filters, d_dropout_prob)
     e2e = E2E(idim, odim, args, dis, False)
     model = Loss(e2e, args.mtlalpha)
 
@@ -403,10 +420,10 @@ def train(args):
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)
 
-    def create_main_trainer(epochs, tag):
+    def create_main_trainer(epochs, tag, rollout, pg_loss):
         # Set up a trainer
         updater = CustomUpdater(
-            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu)
+            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rollout, dis, pg_loss)
         trainer = training.Trainer(
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)
@@ -487,8 +504,8 @@ def train(args):
     # discriminator is defined at the top
     dis = dis.to(device)
     # train discriminator
-    dis_optimizer = torch.optim.Adagrad(dis.parameters())
-    # dis_optimizer = torch.optim.SGD(dis.parameters(), lr = 0.01, momentum=0.9)
+    # dis_optimizer = torch.optim.Adagrad(dis.parameters())
+    dis_optimizer = torch.optim.SGD(dis.parameters(), lr = 0.01, momentum=0.9)
     dis_reporter = Reporter()
 
     # FIXME: TOO DIRTY HACK
@@ -519,7 +536,7 @@ def train(args):
         return dis_trainer
 
 
-    trainer = create_main_trainer(args.epochs, "base")
+    trainer = create_main_trainer(args.epochs, "base", None, None)
     dis_pre_train_epochs = 10
     # Resume from a snapshot
     if args.resume:
@@ -546,11 +563,13 @@ def train(args):
     e2e.use_pgloss = True
     # e2e.train()
     print("starting adversarial training")
+    rollout = Rollout(e2e, 0.8)
+    pg_loss = PGLoss()
     for epoch in range(ADV_TRAIN_EPOCHS):
         # TRAIN GENERATOR
         # train generator with policy gradient
         print("training generator with pg loss")
-        trainer = create_main_trainer(1, "pgloss" + str(epoch))
+        trainer = create_main_trainer(1, "pgloss" + str(epoch), rollout, pg_loss)
         dis_trainer = create_dis_trainer(3)
 
         e2e.train()
@@ -565,6 +584,10 @@ def train(args):
         e2e.eval()
         dis.train()
         dis_trainer.run()
+
+        print("Updating rollout model")
+        # update roll-out model
+        rollout.update_params()
 
 
 
