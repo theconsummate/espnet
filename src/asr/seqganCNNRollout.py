@@ -6,6 +6,8 @@ import torch.optim as optim
 import copy
 import numpy as np
 
+from asr_utils import clip_sequence
+
 
 # https://github.com/ZiJianZhao/SeqGAN-PyTorch
 class Discriminator(nn.Module):
@@ -65,15 +67,8 @@ class Rollout(object):
             for l in range(1, seq_len):
                 data = x[:, 0:l]
                 _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
-                ys_hat = torch.max(ys_hat, 2)[1]
-                    # add 1 to make start index from 1
-                    # ys_hat += torch.ones(ys_hat.size()).long().to(self.device)
-                    # ys_hat.to(self.device)
-                    for i in range(ys_true.size()[0]):
-                         pad_in = (ys_true[i] == 0).nonzero().cpu().numpy()
-                         if not pad_in.size == 0:
-                             pad_index = pad_in[0][0]
-                             ys_hat[i][pad_index:] = 0
+                ys_hat = clip_sequence(ys_hat, ys_true)
+
                 pred = discriminator(ys_hat)
                 pred = pred.cpu().data[:,1].numpy()
                 if i == 0:
