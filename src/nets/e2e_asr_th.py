@@ -181,7 +181,7 @@ class E2E(torch.nn.Module):
     :param namespace args: argument namespace containing options
     """
 
-    def __init__(self, idim, odim, args, dis, use_pgloss):
+    def __init__(self, idim, odim, args):
         super(E2E, self).__init__()
         self.etype = args.etype
         self.verbose = args.verbose

@@ -360,7 +360,7 @@ def train(args):
     d_dropout_prob = 0.2
     #
     dis = Discriminator(d_num_class, 52, d_embed_dim, d_filter_sizes, d_num_filters, d_dropout_prob)
-    e2e = E2E(idim, odim, args, dis, False)
+    e2e = E2E(idim, odim, args)
     model = Loss(e2e, args.mtlalpha)
 
     # write model config
