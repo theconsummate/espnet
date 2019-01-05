@@ -160,7 +160,7 @@ class Loss(torch.nn.Module):
             loss_att_data = float(loss_att)
             loss_ctc_data = float(loss_ctc)
         if loss_pg:
-            self.loss += loss_pg
+            self.loss += -2000/loss_pg
             # logging.warning("added pg loss")
             # print("policy gradient learning loss: " + str(float(self.loss)))
 
