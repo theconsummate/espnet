@@ -189,9 +189,9 @@ class CustomUpdater(training.StandardUpdater):
 
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
-        if rollout:
+        if self.rollout:
             # this is during adversarial training
-            rewards = torch.tensor(rollout.get_reward(xs_pad, ilens, ys_pad, 16, dis))
+            rewards = torch.tensor(rollout.get_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             rewards = rewards.to(self.device)
             _, _, _, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
             ys_hat = clip_sequence(ys_hat, ys_true)
