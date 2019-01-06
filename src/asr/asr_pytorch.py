@@ -196,7 +196,7 @@ class CustomUpdater(training.StandardUpdater):
         optimizer.zero_grad()  # Clear the parameter gradients
         if self.rollout:
             # this is during adversarial training
-            rewards = torch.tensor(rollout.get_reward(xs_pad, ilens, ys_pad, 16, self.dis))
+            rewards = torch.tensor(self.rollout.get_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             rewards = rewards.to(self.device)
             _, _, _, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
             ys_hat = clip_sequence(ys_hat, ys_true)
@@ -561,9 +561,9 @@ def train(args):
     e2e.eval()
     dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs)
-    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_seqgan_dispretrain_1.5/results/dis.snapshot.ep.22"
+    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan/results/dis.snapshot.ep.10"
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
-    # torch_resume(dis_snapshot_path, dis_trainer)
+    torch_resume(dis_snapshot_path, dis_trainer)
     dis_trainer.run()
 
 
