@@ -247,7 +247,8 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
         ys_hat = clip_sequence(ys_hat, ys_true)
 
-        inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
+        inp = torch.cat((ys_true, ys_hat), 0)
+        # .type(torch.LongTensor)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
         target[ys_true.size()[0]:] = 0.1
         target[:ys_true.size()[0]] = 0.9
@@ -560,7 +561,7 @@ def train(args):
 
     # run adversarial training with policy gradient
     ADV_TRAIN_EPOCHS = 5
-    e2e.use_pgloss = True
+    # e2e.use_pgloss = True
     # e2e.train()
     print("starting adversarial training")
     rollout = Rollout(e2e, 0.8)
