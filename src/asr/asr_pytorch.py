@@ -136,6 +136,9 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     # x: original json with loaded features
                     #    will be converted to chainer variable later
                     xs_pad, ilens, ys_pad = self.converter(batch, self.device)
+                    if ys_pad.size()[1] < 20:
+                        # skip iteration as sequence is too small for conv net
+                        continue
 
                     # compute the negatives form e2e
                     _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
@@ -241,9 +244,12 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # logging.warning("discriminator training loop.")
         batch = train_iter.next()
         xs_pad, ilens, ys_pad = self.converter(batch, self.device)
+        if ys_pad.size()[1] < 20:
+        # skip iteration as sequence is too small for conv net
+            return
 
         # Compute the loss at this time step and accumulate it
-        optimizer.zero_grad()  # Clear the parameter gradients
+        # optimizer.zero_grad()  # Clear the parameter gradients
         # compute the negatives form e2e
         _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
         ys_hat = clip_sequence(ys_hat, ys_true)
