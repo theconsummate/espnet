@@ -584,10 +584,10 @@ def train(args):
         # train generator with policy gradient
         print("training generator with pg loss")
         trainer = create_main_trainer(1, "pgloss" + str(epoch), rollout, pg_loss)
-        dis_trainer = create_dis_trainer(3)
+        dis_trainer = create_dis_trainer(8)
 
         e2e.train()
-        # dis.eval()
+        dis.eval()
         trainer.run()
         if epoch == (ADV_TRAIN_EPOCHS - 1):
             # no need to train the discriminator at the last loop, break

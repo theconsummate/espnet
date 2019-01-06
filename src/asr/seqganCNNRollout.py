@@ -62,7 +62,8 @@ class Rollout(object):
         """
         rewards = []
         # batch_size = ys_pad.size(0)
-        seq_len = ys_pad.size(1)
+        # add one because the output of the generator has an extra <eos> tag at the end.
+        seq_len = ys_pad.size(1) + 1
         for i in range(num):
             for l in range(1, seq_len):
                 _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
