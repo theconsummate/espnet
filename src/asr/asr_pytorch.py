@@ -170,7 +170,7 @@ class CustomUpdater(training.StandardUpdater):
     '''Custom updater for pytorch'''
 
     def __init__(self, model, grad_clip_threshold, train_iter,
-                 optimizer, converter, device, ngpu, rollout, dis, pg_loss):
+                 optimizer, converter, device, ngpu, rollout, dis, pg_loss, reporter):
         super(CustomUpdater, self).__init__(train_iter, optimizer)
         self.model = model
         self.grad_clip_threshold = grad_clip_threshold
@@ -180,6 +180,7 @@ class CustomUpdater(training.StandardUpdater):
         self.rollout = rollout
         self.dis = dis
         self.pg_loss = pg_loss
+        self.reporter = reporter
 
     # The core part of the update routine can be customized by overriding.
     def update_core(self):
@@ -198,9 +199,10 @@ class CustomUpdater(training.StandardUpdater):
             # this is during adversarial training
             rewards = torch.tensor(self.rollout.get_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             rewards = rewards.to(self.device)
-            _, _, _, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
+            loss_ctc, loss_att, acc, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
             ys_hat = clip_sequence(ys_hat, ys_true)
             loss = self.pg_loss(ys_hat, ys_true, rewards)
+            self.reporter.report(float(loss_ctc), float(loss_att), acc, float(loss))
             loss.backward()
         else:
             if self.ngpu > 1:
@@ -432,7 +434,7 @@ def train(args):
     def create_main_trainer(epochs, tag, rollout, pg_loss):
         # Set up a trainer
         updater = CustomUpdater(
-            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rollout, dis, pg_loss)
+            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rollout, dis, pg_loss, reporter)
         trainer = training.Trainer(
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)
