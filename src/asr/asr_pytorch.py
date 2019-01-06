@@ -60,6 +60,7 @@ from asr_utils import clip_sequence
 
 REPORT_INTERVAL = 100
 
+VOCAB_SIZE = 52
 
 class CustomEvaluator(extensions.Evaluator):
     '''Custom evaluater for pytorch'''
@@ -200,8 +201,10 @@ class CustomUpdater(training.StandardUpdater):
             rewards = torch.tensor(self.rollout.get_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             rewards = rewards.to(self.device)
             loss_ctc, loss_att, acc, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
-            ys_hat = clip_sequence(ys_hat, ys_true)
-            loss = self.pg_loss(ys_hat, ys_true, rewards)
+            # ys_hat = clip_sequence(ys_hat, ys_true)
+            # convert ys_hat from batch_size x seq_len x vocab_size to batch_size*seq_len x vocab_size
+            # convert ys_true from batch_size x seq_len to batch_size*seq_len
+            loss = self.pg_loss(ys_hat.contiguous().view(-1, VOCAB_SIZE), ys_true.data.contiguous().view((-1,)), rewards)
             self.reporter.report(float(loss_ctc), float(loss_att), acc, float(loss))
             loss.backward()
         else:
@@ -370,7 +373,7 @@ def train(args):
     d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
     d_dropout_prob = 0.2
     #
-    dis = Discriminator(d_num_class, 52, d_embed_dim, d_filter_sizes, d_num_filters, d_dropout_prob)
+    dis = Discriminator(d_num_class, VOCAB_SIZE, d_embed_dim, d_filter_sizes, d_num_filters, d_dropout_prob)
     e2e = E2E(idim, odim, args)
     model = Loss(e2e, args.mtlalpha)
 
