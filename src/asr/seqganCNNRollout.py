@@ -65,7 +65,6 @@ class Rollout(object):
         seq_len = ys_pad.size(1)
         for i in range(num):
             for l in range(1, seq_len):
-                data = x[:, 0:l]
                 _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
                 ys_hat = clip_sequence(ys_hat, ys_true)
 
