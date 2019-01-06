@@ -104,13 +104,14 @@ class CustomEvaluator(extensions.Evaluator):
 class CustomDiscriminatorEvaluator(extensions.Evaluator):
     '''Custom evaluater for pytorch'''
 
-    def __init__(self, dis, iterator, target, converter, device, eos):
+    def __init__(self, e2e, dis, iterator, target, converter, device, eos):
         super(CustomDiscriminatorEvaluator, self).__init__(iterator, target)
         self.dis = dis
         self.converter = converter
         self.device = device
         self.eos = eos
         self.target = target
+        self.e2e = e2e
 
     # The core part of the update routine can be customized by overriding.
     def evaluate(self):
@@ -526,7 +527,7 @@ def train(args):
             dis_updater, (epochs, 'epoch'), out=args.outdir)
         # Evaluate the model with the test dataset for each epoch
 
-        dis_trainer.extend(CustomDiscriminatorEvaluator(dis, copy.copy(valid_iter), dis_reporter, converter, device, odim -1))
+        dis_trainer.extend(CustomDiscriminatorEvaluator(e2e, dis, copy.copy(valid_iter), dis_reporter, converter, device, odim -1))
         dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
         #dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),
