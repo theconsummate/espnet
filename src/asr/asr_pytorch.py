@@ -141,10 +141,11 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
                     ys_hat = clip_sequence(ys_hat, ys_true)
 
-                    inp = torch.cat((ys_true, ys_hat), 0).type(torch.LongTensor)
-                    target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
-                    target[ys_true.size()[0]:] = 0.1
-                    target[:ys_true.size()[0]] = 0.9
+                    inp = torch.cat((ys_true, ys_hat), 0)
+                    # .type(torch.LongTensor)
+                    target = torch.ones(ys_true.size()[0] + ys_hat.size()[0]).type(torch.LongTensor)
+                    target[ys_true.size()[0]:] = 0
+                    # target[:ys_true.size()[0]] = 0.9
 
                     inp = inp.to(self.device)
                     target = target.to(self.device)
@@ -249,9 +250,9 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
 
         inp = torch.cat((ys_true, ys_hat), 0)
         # .type(torch.LongTensor)
-        target = torch.ones(ys_true.size()[0] + ys_hat.size()[0])
-        target[ys_true.size()[0]:] = 0.1
-        target[:ys_true.size()[0]] = 0.9
+        target = torch.ones(ys_true.size()[0] + ys_hat.size()[0]).type(torch.LongTensor)
+        target[ys_true.size()[0]:] = 0
+        # target[:ys_true.size()[0]] = 0.9
 
         inp = inp.to(self.device)
         target = target.to(self.device)
