@@ -119,4 +119,4 @@ class PGLoss(nn.Module):
         loss = torch.masked_select(pred, one_hot)
         loss = loss * reward.contiguous().view(-1)
         loss = -torch.sum(loss)
-        return loss
+        return Variable(loss, requires_grad = True)
