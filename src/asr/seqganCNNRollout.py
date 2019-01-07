@@ -69,6 +69,8 @@ class Rollout(object):
         ys_hat = clip_sequence(ys_hat, ys_true)
         seq_len = ys_true.size(1)
         zero = torch.zeros(ys_hat.size())
+        if ys_hat.is_cuda:
+            zero = zero.cuda()
         for i in range(num):
             for l in range(1, seq_len):
                 # just take the first l tokens
