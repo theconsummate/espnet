@@ -68,7 +68,7 @@ class Rollout(object):
         _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
         ys_hat = clip_sequence(ys_hat, ys_true)
         seq_len = ys_true.size(1)
-        zero = torch.zeros(ys_hat.size())
+        zero = torch.zeros(ys_hat.size(), dtype=torch.long)
         if ys_hat.is_cuda:
             zero = zero.cuda()
         for i in range(num):
