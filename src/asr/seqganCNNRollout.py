@@ -53,6 +53,7 @@ class Rollout(object):
         self.ori_model = model
         self.own_model = copy.deepcopy(model)
         self.update_rate = update_rate
+        self.own_model.eval()
 
     def get_reward(self, xs_pad, ilens, ys_pad, num, discriminator):
         """
@@ -66,12 +67,11 @@ class Rollout(object):
         # add one because the output of the generator has an extra <eos> tag at the end.
         seq_len = ys_pad.size(1) + 1
         for i in range(num):
+            _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
+            ys_hat = clip_sequence(ys_hat, ys_true)
+            pred = discriminator(ys_hat)
+            pred = pred.cpu().data[:,1].numpy()
             for l in range(1, seq_len):
-                _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
-                ys_hat = clip_sequence(ys_hat, ys_true)
-
-                pred = discriminator(ys_hat)
-                pred = pred.cpu().data[:,1].numpy()
                 if i == 0:
                     rewards.append(pred)
                 else:
