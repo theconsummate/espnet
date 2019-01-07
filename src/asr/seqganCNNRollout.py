@@ -51,7 +51,7 @@ class Rollout(object):
 
     def __init__(self, model, update_rate):
         self.ori_model = model
-        self.own_model = copy.deepcopy(model)
+        self.own_model = copy.copy(model)
         self.update_rate = update_rate
         self.own_model.eval()
 
@@ -65,13 +65,18 @@ class Rollout(object):
         rewards = []
         # batch_size = ys_pad.size(0)
         # add one because the output of the generator has an extra <eos> tag at the end.
-        seq_len = ys_pad.size(1) + 1
+        _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
+        ys_hat = clip_sequence(ys_hat, ys_true)
+        seq_len = ys_true.size(1)
+        zero = torch.zeros(ys_hat.size())
         for i in range(num):
-            _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
-            ys_hat = clip_sequence(ys_hat, ys_true)
-            pred = discriminator(ys_hat)
-            pred = pred.cpu().data[:,1].numpy()
             for l in range(1, seq_len):
+                # just take the first l tokens
+                samples = torch.cat((ys_hat[:, 0:l], zero[:,l:]), 1)
+                if ys_hat.is_cuda:
+                    samples = samples.cuda()
+                pred = discriminator(samples)
+                pred = pred.cpu().data[:,1].numpy()
                 if i == 0:
                     rewards.append(pred)
                 else:
