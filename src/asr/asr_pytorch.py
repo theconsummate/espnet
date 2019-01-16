@@ -618,7 +618,7 @@ def recog(args):
 
     # load trained model parameters
     logging.info('reading model parameters from ' + args.model)
-    e2e = E2E(idim, odim, train_args, None, False)
+    e2e = E2E(idim, odim, train_args)
     model = Loss(e2e, train_args.mtlalpha)
     torch_load_without_dis(args.model, model)
 
