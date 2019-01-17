@@ -201,7 +201,7 @@ class CustomUpdater(training.StandardUpdater):
             # skip iteration as sequence is too small for conv net in discriminator
                 return
             # this is during adversarial training
-            rewards = torch.tensor(self.rollout.get_reward(xs_pad, ilens, ys_pad, 1, self.dis))
+            rewards = torch.tensor(self.rollout.get_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             rewards = rewards.to(self.device)
             loss_ctc, loss_att, acc, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
             # ys_hat = clip_sequence(ys_hat, ys_true)

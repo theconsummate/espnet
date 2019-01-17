@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
+from torch.distributions import Categorical
 
 import copy
 import numpy as np
@@ -66,15 +67,20 @@ class Rollout(object):
         # batch_size = ys_pad.size(0)
         # add one because the output of the generator has an extra <eos> tag at the end.
         _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
-        ys_hat = clip_sequence(ys_hat, ys_true)
+        # convert to probabilities
+        ys_hat = F.softmax(ys_hat, dim = 2)
+        # action = c.sample()
         seq_len = ys_true.size(1)
         zero = torch.zeros(ys_hat.size(), dtype=torch.long)
         if ys_hat.is_cuda:
             zero = zero.cuda()
         for i in range(num):
             for l in range(1, seq_len):
+                # create a distribution object to draw samples from
+                c = Categorical(ys_hat[:, 0:l])
                 # just take the first l tokens
-                samples = torch.cat((ys_hat[:, 0:l], zero[:,l:]), 1)
+                # samples = torch.cat((ys_hat[:, 0:l], zero[:,l:]), 1)
+                samples = torch.cat((c.sample(), zero[:,l:]), 1)
                 if ys_hat.is_cuda:
                     samples = samples.cuda()
                 pred = discriminator(samples)
