@@ -71,7 +71,7 @@ class Rollout(object):
         ys_hat = F.softmax(ys_hat, dim = 2)
         # action = c.sample()
         seq_len = ys_true.size(1)
-        zero = torch.zeros(ys_hat.size(), dtype=torch.long)
+        zero = torch.zeros(ys_true.size(), dtype=torch.long)
         if ys_hat.is_cuda:
             zero = zero.cuda()
         for i in range(num):
