@@ -484,14 +484,21 @@ def add_results_to_json(js, nbest_hyps, char_list):
     return new_js
 
 
-def clip_sequence(ys_hat, ys_true):
+def convert_ys_hat_prob_to_seq(ys_hat, eos):
+    # take greedy sample
     ys_hat = torch.max(ys_hat, 2)[1]
-    # add 1 to make start index from 1
-    # ys_hat += torch.ones(ys_hat.size()).long().to(self.device)
-    # ys_hat.to(self.device)
-    for i in range(ys_true.size()[0]):
-         pad_in = (ys_true[i] == 0).nonzero().cpu().numpy()
-         if not pad_in.size == 0:
-             pad_index = pad_in[0][0]
-             ys_hat[i][pad_index:] = 0
-    return ys_hat
+    return clip_sequence(ys_hat, eos)
+
+
+def clip_sequence(sample, eos):
+    """
+    sample: (batch_size, seq_len)
+    for each sequence, find the index of eos and then sets the items after that index to zero.
+    """
+    # get the last index of eos for every row
+    idx = torch.max(eos == sample, 1)[1]
+    # loop through the batch and set all indexes after eos char to zero
+    for i in range(sample.size()[0]):
+         if idx[i] + 1 < sample.size()[1]:
+            sample[i][idx[i] + 1 :] = 0
+    return sample

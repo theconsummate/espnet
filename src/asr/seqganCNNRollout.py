@@ -50,10 +50,11 @@ class Discriminator(nn.Module):
 class Rewards(object):
     """ Rollout Policy """
 
-    def __init__(self, model, update_rate):
+    def __init__(self, model, update_rate, eos):
         self.ori_model = model
         self.own_model = copy.copy(model)
         self.update_rate = update_rate
+        self.eos = eos
         self.own_model.eval()
 
     def get_rollout_reward(self, xs_pad, ilens, ys_pad, num, discriminator):
@@ -122,13 +123,13 @@ class Rewards(object):
             c = Categorical(ys_hat[:, 0:l])
             # just take the first l tokens
             # samples = torch.cat((ys_hat[:, 0:l], zero[:,l:]), 1)
-            samples = c.sample()
+            samples = clip_sequence(c.sample(), self.eos)
             # if ys_hat.is_cuda:
             #     samples = samples.cuda()
             # get cer for the samples.
             sample_cer = torch.sum(samples != ys_true, 1).float()
             # reward = (1-sample_cer) - (1-greedy_cer)
-            rewards+ = greedy_cer - sample_cer
+            rewards += greedy_cer - sample_cer
 
         rewards /= (1.0 * num * ys_true.size(1))  # batch_size * seq_len
         return rewards

@@ -56,7 +56,7 @@ matplotlib.use('Agg')
 
 # seqgan related
 from seqganCNNRollout import Discriminator, Rewards, PGLoss
-from asr_utils import clip_sequence
+from asr_utils import convert_ys_hat_prob_to_seq
 
 REPORT_INTERVAL = 100
 
@@ -144,7 +144,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
 
                     # compute the negatives form e2e
                     _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
-                    ys_hat = clip_sequence(ys_hat, ys_true)
+                    ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
 
                     inp = torch.cat((ys_true, ys_hat), 0)
                     # .type(torch.LongTensor)
@@ -204,7 +204,7 @@ class CustomUpdater(training.StandardUpdater):
             rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             rewards = rewards.to(self.device)
             loss_ctc, loss_att, acc, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
-            # ys_hat = clip_sequence(ys_hat, ys_true)
+            # ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
             # convert ys_hat from batch_size x seq_len x vocab_size to batch_size*seq_len x vocab_size
             # convert ys_true from batch_size x seq_len to batch_size*seq_len
             loss = self.pg_loss(ys_hat.contiguous().view(-1, VOCAB_SIZE), ys_true.data.contiguous().view((-1,)), rewards)
@@ -261,7 +261,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # optimizer.zero_grad()  # Clear the parameter gradients
         # compute the negatives form e2e
         _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
-        ys_hat = clip_sequence(ys_hat, ys_true)
+        ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
 
         inp = torch.cat((ys_true, ys_hat), 0)
         # .type(torch.LongTensor)
@@ -580,7 +580,7 @@ def train(args):
     # e2e.use_pgloss = True
     # e2e.train()
     print("starting adversarial training")
-    rewards = Rewards(e2e, 0.8)
+    rewards = Rewards(e2e, 0.8, odim - 1)
     pg_loss = PGLoss()
     for epoch in range(ADV_TRAIN_EPOCHS):
         # TRAIN GENERATOR
