@@ -55,7 +55,7 @@ import numpy as np
 matplotlib.use('Agg')
 
 # seqgan related
-from seqganCNNRollout import Discriminator, Rollout, PGLoss
+from seqganCNNRollout import Discriminator, Rewards, PGLoss
 from asr_utils import clip_sequence
 
 REPORT_INTERVAL = 100
@@ -171,14 +171,14 @@ class CustomUpdater(training.StandardUpdater):
     '''Custom updater for pytorch'''
 
     def __init__(self, model, grad_clip_threshold, train_iter,
-                 optimizer, converter, device, ngpu, rollout, dis, pg_loss, reporter):
+                 optimizer, converter, device, ngpu, rewards, dis, pg_loss, reporter):
         super(CustomUpdater, self).__init__(train_iter, optimizer)
         self.model = model
         self.grad_clip_threshold = grad_clip_threshold
         self.converter = converter
         self.device = device
         self.ngpu = ngpu
-        self.rollout = rollout
+        self.rewards = rewards
         self.dis = dis
         self.pg_loss = pg_loss
         self.reporter = reporter
@@ -196,12 +196,12 @@ class CustomUpdater(training.StandardUpdater):
 
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
-        if self.rollout:
+        if self.rewards:
             if ys_pad.size()[1] < 20:
             # skip iteration as sequence is too small for conv net in discriminator
                 return
             # this is during adversarial training
-            rewards = torch.tensor(self.rollout.get_reward(xs_pad, ilens, ys_pad, 16, self.dis))
+            rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             rewards = rewards.to(self.device)
             loss_ctc, loss_att, acc, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
             # ys_hat = clip_sequence(ys_hat, ys_true)
@@ -437,10 +437,10 @@ def train(args):
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)
 
-    def create_main_trainer(epochs, tag, rollout, pg_loss):
+    def create_main_trainer(epochs, tag, rewards, pg_loss):
         # Set up a trainer
         updater = CustomUpdater(
-            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rollout, dis, pg_loss, reporter)
+            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rewards, dis, pg_loss, reporter)
         trainer = training.Trainer(
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)
@@ -580,13 +580,13 @@ def train(args):
     # e2e.use_pgloss = True
     # e2e.train()
     print("starting adversarial training")
-    rollout = Rollout(e2e, 0.8)
+    rewards = Rewards(e2e, 0.8)
     pg_loss = PGLoss()
     for epoch in range(ADV_TRAIN_EPOCHS):
         # TRAIN GENERATOR
         # train generator with policy gradient
         print("training generator with pg loss")
-        trainer = create_main_trainer(1, "pgloss" + str(epoch), rollout, pg_loss)
+        trainer = create_main_trainer(1, "pgloss" + str(epoch), rewards, pg_loss)
         dis_trainer = create_dis_trainer(8)
 
         e2e.train()
@@ -602,9 +602,9 @@ def train(args):
         dis.train()
         dis_trainer.run()
 
-        print("Updating rollout model")
+        print("Updating rewards model")
         # update roll-out model
-        rollout.update_params()
+        rewards.update_params()
 
 
 

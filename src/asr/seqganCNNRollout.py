@@ -47,7 +47,7 @@ class Discriminator(nn.Module):
         return out
 
 
-class Rollout(object):
+class Rewards(object):
     """ Rollout Policy """
 
     def __init__(self, model, update_rate):
@@ -56,12 +56,10 @@ class Rollout(object):
         self.update_rate = update_rate
         self.own_model.eval()
 
-    def get_reward(self, xs_pad, ilens, ys_pad, num, discriminator):
+    def get_rollout_reward(self, xs_pad, ilens, ys_pad, num, discriminator):
         """
-        Inputs: x, num, discriminator
-            - x: (batch_size, seq_len) input data
-            - num: rollout number
-            - discriminator: discrimanator model
+        Implements a rollout policy gradient reward
+        https://arxiv.org/pdf/1609.05473.pdf
         """
         rewards = []
         # batch_size = ys_pad.size(0)
@@ -98,6 +96,41 @@ class Rollout(object):
             else:
                 rewards[seq_len-1] += pred
         rewards = np.transpose(np.array(rewards)) / (1.0 * num) # batch_size * seq_len
+        return rewards
+
+
+    def get_cer_reward(self, xs_pad, ilens, ys_pad, num):
+        """
+        Implements Self-Critical Sequence Training (SCST)
+        eq 7 in https://arxiv.org/pdf/1712.07101.pdf
+        reward = 1 - cer
+        """
+        rewards = torch.zeros(ys_pad.size(0))
+        # batch_size = ys_pad.size(0)
+        # add one because the output of the generator has an extra <eos> tag at the end.
+        _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
+        # convert to probabilities
+        ys_hat = F.softmax(ys_hat, dim = 2)
+        # action = c.sample()
+        # seq_len = ys_true.size(1)
+        # zero = torch.zeros(ys_true.size(), dtype=torch.long)
+        # if ys_hat.is_cuda:
+        #     zero = zero.cuda()
+        greedy_cer = torch.sum(c.sample() != ys_true, 1).float()
+        for i in range(num):
+            # create a distribution object to draw samples from
+            c = Categorical(ys_hat[:, 0:l])
+            # just take the first l tokens
+            # samples = torch.cat((ys_hat[:, 0:l], zero[:,l:]), 1)
+            samples = c.sample()
+            # if ys_hat.is_cuda:
+            #     samples = samples.cuda()
+            # get cer for the samples.
+            sample_cer = torch.sum(samples != ys_true, 1).float()
+            # reward = (1-sample_cer) - (1-greedy_cer)
+            rewards+ = greedy_cer - sample_cer
+
+        rewards /= (1.0 * num * ys_true.size(1))  # batch_size * seq_len
         return rewards
 
     def update_params(self):
