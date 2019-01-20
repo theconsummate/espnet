@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 import copy
 import numpy as np
 
-from asr_utils import clip_sequence
+from asr_utils import clip_sequence, convert_ys_hat_prob_to_seq
 
 
 # https://github.com/ZiJianZhao/SeqGAN-PyTorch
@@ -100,39 +100,38 @@ class Rewards(object):
         return rewards
 
 
-    def get_cer_reward(self, xs_pad, ilens, ys_pad, num):
+    def get_cer_reward(self, ys_hat, ys_true, num):
         """
         Implements Self-Critical Sequence Training (SCST)
         eq 7 in https://arxiv.org/pdf/1712.07101.pdf
         reward = 1 - cer
         """
-        rewards = torch.zeros(ys_pad.size(0))
+        rewards = []
+        #rewards = torch.zeros(ys_pad.size(0))
         # batch_size = ys_pad.size(0)
         # add one because the output of the generator has an extra <eos> tag at the end.
-        _, _, _, _, ys_hat, ys_true = self.own_model(xs_pad, ilens, ys_pad)
+        #_, _, _, _, ys_hat, ys_true = self.ori_model(xs_pad, ilens, ys_pad)
         # convert to probabilities
         ys_hat = F.softmax(ys_hat, dim = 2)
         # action = c.sample()
         # seq_len = ys_true.size(1)
         # zero = torch.zeros(ys_true.size(), dtype=torch.long)
-        # if ys_hat.is_cuda:
-        #     zero = zero.cuda()
-        greedy_cer = torch.sum(c.sample() != ys_true, 1).float()
+        #if ys_hat.is_cuda:
+        #    rewards = rewards.cuda()
+        greedy_cer = torch.sum(convert_ys_hat_prob_to_seq(ys_hat, self.eos) != ys_true, 1).float()
+        c = Categorical(ys_hat)
         for i in range(num):
-            # create a distribution object to draw samples from
-            c = Categorical(ys_hat[:, 0:l])
-            # just take the first l tokens
-            # samples = torch.cat((ys_hat[:, 0:l], zero[:,l:]), 1)
-            samples = clip_sequence(c.sample(), self.eos)
+            sample = c.sample()
+            samples = clip_sequence(sample, self.eos)
             # if ys_hat.is_cuda:
             #     samples = samples.cuda()
             # get cer for the samples.
             sample_cer = torch.sum(samples != ys_true, 1).float()
-            # reward = (1-sample_cer) - (1-greedy_cer)
-            rewards += greedy_cer - sample_cer
+            # reward = -((1-sample_cer) - (1-greedy_cer))* p(y_sample/x)
+            rewards.append(-c.log_prob(sample).permute(1,0) * ( greedy_cer - sample_cer))
 
-        rewards /= (1.0 * num * ys_true.size(1))  # batch_size * seq_len
-        return rewards
+        loss = torch.stack(rewards).sum() /(1.0 * num * ys_true.size(1))  # batch_size * seq_len
+        return Variable(loss, requires_grad = True)
 
     def update_params(self):
         dic = {}
