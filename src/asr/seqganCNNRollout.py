@@ -52,10 +52,10 @@ class Rewards(object):
 
     def __init__(self, model, update_rate, eos):
         self.ori_model = model
-        self.own_model = copy.copy(model)
+        #self.own_model = copy.copy(model)
         self.update_rate = update_rate
         self.eos = eos
-        self.own_model.eval()
+        #self.own_model.eval()
 
     def get_rollout_reward(self, xs_pad, ilens, ys_pad, num, discriminator):
         """
@@ -131,7 +131,8 @@ class Rewards(object):
             rewards.append(-c.log_prob(sample).permute(1,0) * ( greedy_cer - sample_cer))
 
         loss = torch.stack(rewards).sum() /(1.0 * num * ys_true.size(1))  # batch_size * seq_len
-        return Variable(loss, requires_grad = True)
+        return loss
+        #return Variable(loss, requires_grad = True)
 
     def update_params(self):
         dic = {}
@@ -166,4 +167,5 @@ class PGLoss(nn.Module):
         loss = torch.masked_select(pred, one_hot)
         loss = loss * reward.contiguous().view(-1)
         loss = -torch.sum(loss)
-        return Variable(loss, requires_grad = True)
+        return loss
+        #return Variable(loss, requires_grad = True)
