@@ -55,12 +55,14 @@ import numpy as np
 matplotlib.use('Agg')
 
 # seqgan related
-from seqganCNNRollout import Discriminator, Rewards, PGLoss
+from seqganCNNRollout import Discriminator, Rewards, PGLoss, DiscriminatorEncoder
 from asr_utils import convert_ys_hat_prob_to_seq
 
 REPORT_INTERVAL = 100
 
 VOCAB_SIZE = 52
+
+ENCODER_VOCAB_SIZE = 320
 
 class CustomEvaluator(extensions.Evaluator):
     '''Custom evaluater for pytorch'''
@@ -134,11 +136,6 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         hs_pad = self.e2e.encode(xs_pad, ilens) # batch_size, seqlen, projection
         xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
         hs_pad_noise = self.e2e.encode(xs_pad_noise, ilens_noise)
-
-        # change shape, batch_size * seqlen, projection
-        # train discriminate at frame level
-        hs_pad = hs_pad.view(-1, hs_pad.shape[-1])
-        hs_pad_noise = hs_pad_noise.view(-1, hs_pad_noise.shape[-1])
 
         inp = torch.cat((hs_pad, hs_pad_noise), 0)
         # .type(torch.LongTensor)
@@ -289,11 +286,6 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         hs_pad = self.e2e.encode(xs_pad, ilens) # batch_size, seqlen, projection
         xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
         hs_pad_noise = self.e2e.encode(xs_pad_noise, ilens_noise)
-
-        # change shape, batch_size * seqlen, projection
-        # train discriminate at frame level
-        hs_pad = hs_pad.view(-1, hs_pad.shape[-1])
-        hs_pad_noise = hs_pad_noise.view(-1, hs_pad_noise.shape[-1])
 
         inp = torch.cat((hs_pad, hs_pad_noise), 0)
         # .type(torch.LongTensor)
