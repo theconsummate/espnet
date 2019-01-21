@@ -423,6 +423,24 @@ def train(args):
     with open(args.valid_json, 'rb') as f:
         valid_json = json.load(f)['utts']
 
+    # comment the following if noise is not being used.
+    # assuming that data.json and data_noise.json are present
+    with open(args.train_json[:-5] + "_noise.json", 'rb') as f:
+        train_noise_json = json.load(f)['utts']
+    with open(args.valid_json[:-5] + "_noise.json", 'rb') as f:
+        valid_noise_json = json.load(f)['utts']
+
+    # full = clean + noisy not required right now!
+    # train_full_json = {}
+    # valid_full_json = {}
+    # for c, n in zip(train_json.keys(), train_noise_json.keys()):
+    #     train_full_json[c + "_clean"] = train_json[c]
+    #     train_full_json[n + "_noise"] = train_noise_json[n]
+
+    # for c, n in zip(valid_json.keys(), valid_noise_json.keys()):
+    #     valid_full_json[c + "_clean"] = valid_json[c]
+    #     valid_full_json[n + "_noise"] = valid_noise_json[n]
+    
     # make minibatch list (variable length)
     train = make_batchset(train_json, args.batch_size,
                           args.maxlen_in, args.maxlen_out, args.minibatches)
@@ -436,6 +454,36 @@ def train(args):
     valid_iter = chainer.iterators.SerialIterator(
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)
+    
+    # now for noisy data
+    train_noise = make_batchset(train_noise_json, args.batch_size,
+                          args.maxlen_in, args.maxlen_out, args.minibatches)
+    valid_noise = make_batchset(valid_noise_json, args.batch_size,
+                          args.maxlen_in, args.maxlen_out, args.minibatches)
+    # hack to make batchsze argument as 1
+    # actual bathsize is included in a list
+    train_noise_iter = chainer.iterators.MultiprocessIterator(
+        TransformDataset(train_noise, converter.transform),
+        batch_size=1, n_processes=1, n_prefetch=8)
+    valid_noise_iter = chainer.iterators.SerialIterator(
+        TransformDataset(valid_noise, converter.transform),
+        batch_size=1, repeat=False, shuffle=False)
+
+    # not required right now
+    # # now for both clean and noise data
+    # train_full = make_batchset(train_full_json, args.batch_size,
+    #                       args.maxlen_in, args.maxlen_out, args.minibatches)
+    # valid_full = make_batchset(valid_full_json, args.batch_size,
+    #                       args.maxlen_in, args.maxlen_out, args.minibatches)
+    # # hack to make batchsze argument as 1
+    # # actual bathsize is included in a list
+    # train_full_iter = chainer.iterators.MultiprocessIterator(
+    #     TransformDataset(train_full, converter.transform),
+    #     batch_size=1, n_processes=1, n_prefetch=8)
+    # valid_full_iter = chainer.iterators.SerialIterator(
+    #     TransformDataset(valid_full, converter.transform),
+    #     batch_size=1, repeat=False, shuffle=False)
+    
 
     def create_main_trainer(epochs, tag, rewards, pg_loss):
         # Set up a trainer
