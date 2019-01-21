@@ -105,7 +105,7 @@ class CustomEvaluator(extensions.Evaluator):
 class CustomDiscriminatorEvaluator(extensions.Evaluator):
     '''Custom evaluater for pytorch'''
 
-    def __init__(self, e2e, dis, iterator, target, converter, device, eos):
+    def __init__(self, e2e, dis, iterator, target, converter, device, eos, noise_iter):
         super(CustomDiscriminatorEvaluator, self).__init__(iterator, target)
         self.dis = dis
         self.converter = converter
@@ -113,7 +113,32 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         self.eos = eos
         self.target = target
         self.e2e = e2e
+        self.noiseiter = noise_iter
 
+    def evaluate_decoder_input(self, xs_pad, ilens, ys_pad):
+        """
+        calculate loss and accuracy when the output of e2e decoder is the input.
+        """
+        # compute the negatives form e2e
+        _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
+        ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
+
+        inp = torch.cat((ys_true, ys_hat), 0)
+        # .type(torch.LongTensor)
+        target = torch.ones(ys_true.size()[0] + ys_hat.size()[0]).type(torch.LongTensor)
+        target[ys_true.size()[0]:] = 0
+        # target[:ys_true.size()[0]] = 0.9
+
+        inp = inp.to(self.device)
+        target = target.to(self.device)
+
+        out = self.dis(inp)
+        loss_fn = torch.nn.NLLLoss()
+        loss = loss_fn(out, target)
+        pred = out.data.max(1)[1]
+        acc = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
+        return loss, acc
+    
     # The core part of the update routine can be customized by overriding.
     def evaluate(self):
         iterator = self._iterators['main']
@@ -142,24 +167,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                         # skip iteration as sequence is too small for conv net
                         continue
 
-                    # compute the negatives form e2e
-                    _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
-                    ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
-
-                    inp = torch.cat((ys_true, ys_hat), 0)
-                    # .type(torch.LongTensor)
-                    target = torch.ones(ys_true.size()[0] + ys_hat.size()[0]).type(torch.LongTensor)
-                    target[ys_true.size()[0]:] = 0
-                    # target[:ys_true.size()[0]] = 0.9
-
-                    inp = inp.to(self.device)
-                    target = target.to(self.device)
-
-                    out = self.dis(inp)
-                    loss_fn = torch.nn.NLLLoss()
-                    loss = loss_fn(out, target)
-                    pred = out.data.max(1)[1]
-                    acc = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
+                    loss, acc = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
                 summary.add(observation)
@@ -232,7 +240,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
     '''Custom updater for pytorch'''
 
     def __init__(self, e2e, discriminator, grad_clip_threshold, train_iter,
-                 optimizer, converter, dis_reporter, device, ngpu):
+                 optimizer, converter, dis_reporter, device, ngpu, noise_iter):
         super(CustomDiscriminatorUpdater, self).__init__(train_iter, optimizer)
         self.e2e = e2e
         self.model = discriminator
@@ -241,22 +249,12 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         self.device = device
         self.ngpu = ngpu
         self.dis_reporter = dis_reporter
+        self.noiseiter = noise_iter
 
-    # The core part of the update routine can be customized by overriding.
-    def update_core(self):
-        # When we pass one iterator and optimizer to StandardUpdater.__init__,
-        # they are automatically named 'main'.
-        train_iter = self.get_iterator('main')
-        optimizer = self.get_optimizer('main')
-
-        # Get the next batch ( a list of json files)
-        # logging.warning("discriminator training loop.")
-        batch = train_iter.next()
-        xs_pad, ilens, ys_pad = self.converter(batch, self.device)
-        if ys_pad.size()[1] < 20:
-        # skip iteration as sequence is too small for conv net
-            return
-
+    def evaluate_decoder_input(self, xs_pad, ilens, ys_pad):
+        """
+        calculate loss and accuracy when the output of e2e decoder is the input.
+        """
         # Compute the loss at this time step and accumulate it
         # optimizer.zero_grad()  # Clear the parameter gradients
         # compute the negatives form e2e
@@ -272,12 +270,30 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         inp = inp.to(self.device)
         target = target.to(self.device)
 
-        optimizer.zero_grad()
         out = self.model(inp)
         loss_fn = torch.nn.NLLLoss()
         loss = loss_fn(out, target)
         pred = out.data.max(1)[1]
         acc_dis = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
+        return loss, acc_dis
+    
+    # The core part of the update routine can be customized by overriding.
+    def update_core(self):
+        # When we pass one iterator and optimizer to StandardUpdater.__init__,
+        # they are automatically named 'main'.
+        train_iter = self.get_iterator('main')
+        optimizer = self.get_optimizer('main')
+
+        # Get the next batch ( a list of json files)
+        # logging.warning("discriminator training loop.")
+        batch = train_iter.next()
+        xs_pad, ilens, ys_pad = self.converter(batch, self.device)
+        if ys_pad.size()[1] < 20:
+        # skip iteration as sequence is too small for conv net
+            return
+        optimizer.zero_grad()
+        loss, acc_dis = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
+        
         # report the values
         self.dis_reporter.report_dis(float(loss), acc_dis)
 
@@ -578,12 +594,12 @@ def train(args):
     setattr(dis_optimizer, "serialize", lambda s: dis_reporter.serialize(s))
 
     def create_dis_trainer(epochs):
-        dis_updater = CustomDiscriminatorUpdater(e2e, dis, args.grad_clip, copy.copy(train_iter), dis_optimizer, converter, dis_reporter, device, args.ngpu)
+        dis_updater = CustomDiscriminatorUpdater(e2e, dis, args.grad_clip, copy.copy(train_iter), dis_optimizer, converter, dis_reporter, device, args.ngpu, copy.copy(train_noise_iter))
         dis_trainer = training.Trainer(
             dis_updater, (epochs, 'epoch'), out=args.outdir)
         # Evaluate the model with the test dataset for each epoch
 
-        dis_trainer.extend(CustomDiscriminatorEvaluator(e2e, dis, copy.copy(valid_iter), dis_reporter, converter, device, odim -1))
+        dis_trainer.extend(CustomDiscriminatorEvaluator(e2e, dis, copy.copy(valid_iter), dis_reporter, converter, device, odim -1, copy.copy(valid_noise_iter)))
         dis_trainer.extend(torch_snapshot(filename='dis.snapshot.ep.{.updater.epoch}'), trigger=(1, 'epoch'))
         # Save best models
         #dis_trainer.extend(extensions.snapshot_object(model, 'dis.loss.best', savefun=torch_save),

@@ -354,6 +354,18 @@ class E2E(torch.nn.Module):
 
         return loss_ctc, loss_att, acc, loss_pg, ys_hat.data, ys_true.data
 
+    def encode(self, xs_pad, ilens):
+        '''E2E encode
+
+        :param torch.Tensor xs_pad: batch of padded input sequences (B, Tmax, idim)
+        :param torch.Tensor ilens: batch of lengths of input sequences (B)
+        :return: hs_pad
+        :rtype: torch.Tensor
+        '''
+        # 1. encoder
+        hs_pad, hlens = self.enc(xs_pad, ilens)
+        return hs_pad
+    
     def recognize(self, x, recog_args, char_list, rnnlm=None):
         '''E2E beam search
 
