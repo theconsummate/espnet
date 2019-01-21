@@ -62,7 +62,7 @@ REPORT_INTERVAL = 100
 
 VOCAB_SIZE = 52
 
-ENCODER_VOCAB_SIZE = 320
+ENCODER_EMBED_DIM = 320
 
 class CustomEvaluator(extensions.Evaluator):
     '''Custom evaluater for pytorch'''
@@ -309,7 +309,10 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # skip iteration as sequence is too small for conv net
             return
         optimizer.zero_grad()
-        inp, target = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
+        # decoder as input
+        # inp, target = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
+        # encoder as input
+        inp, target = self.evaluate_encoder_input(xs_pad, ilens)
 
         inp = inp.to(self.device)
         target = target.to(self.device)
@@ -417,7 +420,10 @@ def train(args):
     d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
     d_dropout_prob = 0.2
     #
-    dis = Discriminator(d_num_class, VOCAB_SIZE, d_embed_dim, d_filter_sizes, d_num_filters, d_dropout_prob)
+    # decoder as input
+    # dis = Discriminator(d_num_class, VOCAB_SIZE, d_embed_dim, d_filter_sizes, d_num_filters, d_dropout_prob)
+    dis = DiscriminatorEncoder(d_num_class, ENCODER_EMBED_DIM, d_filter_sizes, d_num_filters, d_dropout_prob)
+    # encoder as input
     e2e = E2E(idim, odim, args)
     model = Loss(e2e, args.mtlalpha)
 
