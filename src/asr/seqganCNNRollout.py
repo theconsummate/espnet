@@ -41,7 +41,7 @@ class Discriminator(nn.Module):
         pools = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs] # [batch_size * num_filter]
         out = torch.cat(pools, 1)  # batch_size * sum(num_filters)
         highway = self.highway(out)
-        transform = F.sigmoid(highway)
+        transform = torch.sigmoid(highway)
         out = transform * F.relu(highway) + (1. - transform) * out # sets C = 1 - T
         out = F.log_softmax(self.fc(self.dropout(out)), dim=1) # batch * num_classes
         return out
@@ -75,7 +75,7 @@ class DiscriminatorEncoder(nn.Module):
         pools = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs] # [batch_size * num_filter]
         out = torch.cat(pools, 1)  # batch_size * sum(num_filters)
         highway = self.highway(out)
-        transform = F.sigmoid(highway)
+        transform = torch.sigmoid(highway)
         out = transform * F.relu(highway) + (1. - transform) * out # sets C = 1 - T
         out = F.log_softmax(self.fc(self.dropout(out)), dim=1) # batch * num_classes
         return out

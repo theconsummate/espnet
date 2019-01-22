@@ -306,7 +306,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # inp = inp.to(self.device)
         target = target.to(self.device)
 
-        out = self.model(inp)
+        # out = self.model(inp)
         loss_fn = torch.nn.NLLLoss()
         loss = loss_fn(out, target)
         pred = out.data.max(1)[1]

@@ -364,8 +364,8 @@ class E2E(torch.nn.Module):
         '''
         # 1. encoder
         hs_pad, hlens = self.enc(xs_pad, ilens)
-        return hs_pad
-    
+        return hs_pad.data
+
     def recognize(self, x, recog_args, char_list, rnnlm=None):
         '''E2E beam search
 
