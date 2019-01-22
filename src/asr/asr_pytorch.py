@@ -129,9 +129,17 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         # .type(torch.LongTensor)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0]).type(torch.LongTensor)
         target[ys_true.size()[0]:] = 0
-        # target[:ys_true.size()[0]] = 0.9        
-        return inp, target
-    
+        # target[:ys_true.size()[0]] = 0.9
+        inp = inp.to(self.device)
+        target = target.to(self.device)
+
+        out = self.dis(inp)
+        loss_fn = torch.nn.NLLLoss()
+        loss = loss_fn(out, target)
+        pred = out.data.max(1)[1]
+        acc = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
+        return loss, acc
+
     def evaluate_encoder_input(self, xs_pad, ilens):
         hs_pad = self.e2e.encode(xs_pad, ilens) # batch_size, seqlen, projection
         xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
@@ -143,7 +151,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         target[hs_pad.size()[0]:] = 0
         # target[:ys_true.size()[0]] = 0.9
         return inp, target
-    
+
     # The core part of the update routine can be customized by overriding.
     def evaluate(self):
         iterator = self._iterators['main']
@@ -172,16 +180,8 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                         # skip iteration as sequence is too small for conv net
                         continue
 
-                    inp, target = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
-                    inp = inp.to(self.device)
-                    target = target.to(self.device)
+                    loss,acc = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
 
-                    out = self.dis(inp)
-                    loss_fn = torch.nn.NLLLoss()
-                    loss = loss_fn(out, target)
-                    pred = out.data.max(1)[1]
-                    acc = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
-                    
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
                 summary.add(observation)
@@ -279,20 +279,39 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # .type(torch.LongTensor)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0]).type(torch.LongTensor)
         target[ys_true.size()[0]:] = 0
-        # target[:ys_true.size()[0]] = 0.9        
-        return inp, target
-    
+        # target[:ys_true.size()[0]] = 0.9
+        inp = inp.to(self.device)
+        target = target.to(self.device)
+
+        out = self.model(inp)
+        loss_fn = torch.nn.NLLLoss()
+        loss = loss_fn(out, target)
+        pred = out.data.max(1)[1]
+        acc_dis = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
+        return loss, acc_dis
+
     def evaluate_encoder_input(self, xs_pad, ilens):
         hs_pad = self.e2e.encode(xs_pad, ilens) # batch_size, seqlen, projection
         xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
         hs_pad_noise = self.e2e.encode(xs_pad_noise, ilens_noise)
 
-        inp = torch.cat((hs_pad, hs_pad_noise), 0)
+        out_clean = self.model(hs_pad)
+        out_noise = self.model(hs_pad_noise)
+
+        out = torch.cat((out_clean, out_noise), 0)
         # .type(torch.LongTensor)
         target = torch.ones(hs_pad.size()[0] + hs_pad_noise.size()[0]).type(torch.LongTensor)
         target[hs_pad.size()[0]:] = 0
         # target[:ys_true.size()[0]] = 0.9
-        return inp, target
+        # inp = inp.to(self.device)
+        target = target.to(self.device)
+
+        out = self.model(inp)
+        loss_fn = torch.nn.NLLLoss()
+        loss = loss_fn(out, target)
+        pred = out.data.max(1)[1]
+        acc_dis = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
+        return loss, acc_dis
 
     # The core part of the update routine can be customized by overriding.
     def update_core(self):
@@ -310,18 +329,11 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
             return
         optimizer.zero_grad()
         # decoder as input
-        # inp, target = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
+        # loss, acc_dis = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
         # encoder as input
-        inp, target = self.evaluate_encoder_input(xs_pad, ilens)
+        loss, acc_dis = self.evaluate_encoder_input(xs_pad, ilens)
 
-        inp = inp.to(self.device)
-        target = target.to(self.device)
 
-        out = self.model(inp)
-        loss_fn = torch.nn.NLLLoss()
-        loss = loss_fn(out, target)
-        pred = out.data.max(1)[1]
-        acc_dis = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
         # report the values
         self.dis_reporter.report_dis(float(loss), acc_dis)
 
@@ -487,7 +499,7 @@ def train(args):
     # for c, n in zip(valid_json.keys(), valid_noise_json.keys()):
     #     valid_full_json[c + "_clean"] = valid_json[c]
     #     valid_full_json[n + "_noise"] = valid_noise_json[n]
-    
+
     # make minibatch list (variable length)
     train = make_batchset(train_json, args.batch_size,
                           args.maxlen_in, args.maxlen_out, args.minibatches)
@@ -501,7 +513,7 @@ def train(args):
     valid_iter = chainer.iterators.SerialIterator(
         TransformDataset(valid, converter.transform),
         batch_size=1, repeat=False, shuffle=False)
-    
+
     # now for noisy data
     train_noise = make_batchset(train_noise_json, args.batch_size,
                           args.maxlen_in, args.maxlen_out, args.minibatches)
@@ -530,7 +542,7 @@ def train(args):
     # valid_full_iter = chainer.iterators.SerialIterator(
     #     TransformDataset(valid_full, converter.transform),
     #     batch_size=1, repeat=False, shuffle=False)
-    
+
 
     def create_main_trainer(epochs, tag, rewards, pg_loss):
         # Set up a trainer
@@ -666,7 +678,7 @@ def train(args):
     dis_trainer = create_dis_trainer(dis_pre_train_epochs)
     dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan/results/dis.snapshot.ep.10"
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
-    torch_resume(dis_snapshot_path, dis_trainer)
+    # torch_resume(dis_snapshot_path, dis_trainer)
     dis_trainer.run()
 
 
