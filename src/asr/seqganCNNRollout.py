@@ -140,20 +140,19 @@ class Rewards(object):
         hs_pad_noise: batch_size, seq_len,projection
         """
         # greedy_sampling
-        hs_pad_noise_greedy = torch.max(hs_pad_noise, 2)[1]
         rewards = []
         seq_len = hs_pad.size(1)
         zero = torch.zeros(hs_pad.size(), dtype=torch.long)
-        if hs_pad_noise_greedy.is_cuda:
+        if hs_pad_noise.is_cuda:
             zero = zero.cuda()
         for i in range(num):
             for l in range(1, seq_len):
                 # just take the first l tokens
-                samples = torch.cat((hs_pad_noise_greedy[:, 0:l], zero[:,l:]), 1)
+                samples = torch.cat((hs_pad_noise[:, 0:l], zero[:,l:]), 1)
                 if hs_pad.is_cuda:
                     samples = samples.cuda()
                 pred = discriminator(samples)
-                if hs_pad_noise_greedy.is_cuda:
+                if hs_pad_noise.is_cuda:
                     samples = samples.cuda()
                 pred = discriminator(samples)
                 pred = pred.cpu().data[:,1].numpy()
