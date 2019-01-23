@@ -579,7 +579,7 @@ def train(args):
     def create_main_trainer(epochs, tag, rewards, pg_loss):
         # Set up a trainer
         updater = CustomUpdater(
-            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rewards, dis, pg_loss, reporter, copy.copy(valid_noise_iter))
+            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rewards, dis, pg_loss, reporter, copy.copy(train_noise_iter))
         trainer = training.Trainer(
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)
