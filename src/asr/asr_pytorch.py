@@ -192,7 +192,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                         continue
 
                     # loss,acc = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
-                    loss,acc = self.evaluate_encoder_input(xs_pad, ilens, ys_pad)
+                    loss,acc = self.evaluate_encoder_input(xs_pad, ilens)
 
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
