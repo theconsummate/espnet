@@ -86,6 +86,38 @@ def load_inputs_and_targets(batch):
     return xs, ys
 
 
+def load_inputs_and_targets_with_noise(batch, noise_json):
+    """Function to load inputs and targets from list of dicts
+
+    :param list batch: list of dict which is subset of loaded data.json
+    :return: list of input feature sequences [(T_1, D), (T_2, D), ..., (T_B, D)]
+    :rtype: list of float ndarray
+    :return: list of target token id sequences [(L_1), (L_2), ..., (L_B)]
+    :rtype: list of int ndarray
+    """
+    # load acoustic features and target sequence of token ids
+    xs = [kaldi_io_py.read_mat(b[1]['input'][0]['feat']) for b in batch]
+    ys = [b[1]['output'][0]['tokenid'].split() for b in batch]
+
+    # get index of non-zero length samples
+    nonzero_idx = filter(lambda i: len(ys[i]) > 0, range(len(xs)))
+    # sort in input lengths
+    nonzero_sorted_idx = sorted(nonzero_idx, key=lambda i: -len(xs[i]))
+    if len(nonzero_sorted_idx) != len(xs):
+        logging.warning('Target sequences include empty tokenid (batch %d -> %d).' % (
+            len(xs), len(nonzero_sorted_idx)))
+
+    # remove zero-length samples
+    xs = [xs[i] for i in nonzero_sorted_idx]
+    ys = [np.fromiter(map(int, ys[i]), dtype=np.int64) for i in nonzero_sorted_idx]
+
+    # now noise
+    xs_noise = [kaldi_io_py.read_mat(noise_json[b[0]]['input'][0]['feat']) for b in batch]
+    xs_noise = [xs_noise[i] for i in nonzero_sorted_idx]
+
+    return xs, ys, xs_noise
+
+
 # * -------------------- chainer extension related -------------------- *
 class CompareValueTrigger(object):
     '''Trigger invoked when key value getting bigger or lower than before

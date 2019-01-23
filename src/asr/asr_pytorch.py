@@ -26,7 +26,7 @@ from asr_utils import adadelta_eps_decay
 from asr_utils import add_results_to_json
 from asr_utils import CompareValueTrigger
 from asr_utils import get_model_conf
-from asr_utils import load_inputs_and_targets
+from asr_utils import load_inputs_and_targets, load_inputs_and_targets_with_noise
 from asr_utils import make_batchset
 from asr_utils import PlotAttentionReport
 from asr_utils import restore_snapshot
@@ -236,7 +236,6 @@ class CustomUpdater(training.StandardUpdater):
 
         # Get the next batch ( a list of json files)
         batch = train_iter.next()
-        xs_pad, ilens, ys_pad = self.converter(batch, self.device)
 
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
@@ -245,9 +244,11 @@ class CustomUpdater(training.StandardUpdater):
             # # skip iteration as sequence is too small for conv net in discriminator
             #     return
             # encoder as input
+            self.converter.use_noise = True
+            xs_pad, ilens, ys_pad, xs_pad_noise = self.converter(batch, self.device)
             hs_pad = self.model.predictor.encode(xs_pad, ilens) # batch_size, seqlen, projection
-            xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
-            hs_pad_noise = self.model.predictor.encode(xs_pad_noise, ilens_noise)
+            # xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
+            hs_pad_noise = self.model.predictor.encode(xs_pad_noise, ilens)
             # convert batch_size,seq_len,projection to batch_size,seq_len
             rewards = torch.tensor(self.rewards.get_rollout_reward_encoder(hs_pad, hs_pad_noise, 1, self.dis))
             hs_pad = torch.max(hs_pad, 2)[1]
@@ -264,6 +265,7 @@ class CustomUpdater(training.StandardUpdater):
             self.reporter.report(float(loss_ctc), float(loss_att), acc, float(loss))
             loss.backward()
         else:
+            xs_pad, ilens, ys_pad = self.converter(batch, self.device)
             if self.ngpu > 1:
                 loss = 1. / self.ngpu * self.model(xs_pad, ilens, ys_pad)
                 loss.backward(loss.new_ones(self.ngpu))  # Backprop
@@ -387,18 +389,28 @@ class CustomConverter(object):
     def __init__(self, subsamping_factor=1):
         self.subsamping_factor = subsamping_factor
         self.ignore_id = -1
+        self.noise_train_json = {}
+        self.use_noise = False
 
     def transform(self, item):
-        return load_inputs_and_targets(item)
+        if not self.use_noise:
+            return load_inputs_and_targets(item)
+        else:
+            return load_inputs_and_targets_with_noise(item, noise_train_json)
 
     def __call__(self, batch, device):
         # batch should be located in list
         assert len(batch) == 1
-        xs, ys = batch[0]
+        if not self.use_noise:
+            xs, ys = batch[0]
+        else:
+            xs, ys, xs_noise = batch[0]
 
         # perform subsamping
         if self.subsamping_factor > 1:
             xs = [x[::self.subsampling_factor, :] for x in xs]
+            if self.use_noise:
+                xs_noise = [x[::self.subsampling_factor, :] for x in xs_noise]
 
         # get batch of lengths of input sequences
         ilens = np.array([x.shape[0] for x in xs])
@@ -407,6 +419,10 @@ class CustomConverter(object):
         xs_pad = pad_list([torch.from_numpy(x).float() for x in xs], 0).to(device)
         ilens = torch.from_numpy(ilens).to(device)
         ys_pad = pad_list([torch.from_numpy(y).long() for y in ys], self.ignore_id).to(device)
+
+        if self.use_noise:
+            xs_pad_noise = pad_list([torch.from_numpy(x).float() for x in xs_noise], 0).to(device)
+            return xs_pad, ilens, ys_pad, xs_pad_noise
 
         return xs_pad, ilens, ys_pad
 
@@ -519,6 +535,8 @@ def train(args):
         train_noise_json = json.load(f)['utts']
     with open(args.valid_json[:-5] + "_noise.json", 'rb') as f:
         valid_noise_json = json.load(f)['utts']
+
+    converter.noise_train_json = train_noise_json
 
     # full = clean + noisy not required right now!
     # train_full_json = {}
