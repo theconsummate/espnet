@@ -145,12 +145,23 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
         hs_pad_noise = self.e2e.encode(xs_pad_noise, ilens_noise)
 
-        inp = torch.cat((hs_pad, hs_pad_noise), 0)
+        out_clean = self.model(hs_pad)
+        out_noise = self.model(hs_pad_noise)
+
+        out = torch.cat((out_clean, out_noise), 0)
         # .type(torch.LongTensor)
         target = torch.ones(hs_pad.size()[0] + hs_pad_noise.size()[0]).type(torch.LongTensor)
         target[hs_pad.size()[0]:] = 0
         # target[:ys_true.size()[0]] = 0.9
-        return inp, target
+        # inp = inp.to(self.device)
+        target = target.to(self.device)
+
+        # out = self.model(inp)
+        loss_fn = torch.nn.NLLLoss()
+        loss = loss_fn(out, target)
+        pred = out.data.max(1)[1]
+        acc_dis = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
+        return loss, acc_dis
 
     # The core part of the update routine can be customized by overriding.
     def evaluate(self):
@@ -180,7 +191,8 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                         # skip iteration as sequence is too small for conv net
                         continue
 
-                    loss,acc = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
+                    # loss,acc = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
+                    loss,acc = self.evaluate_encoder_input(xs_pad, ilens, ys_pad)
 
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
@@ -193,7 +205,7 @@ class CustomUpdater(training.StandardUpdater):
     '''Custom updater for pytorch'''
 
     def __init__(self, model, grad_clip_threshold, train_iter,
-                 optimizer, converter, device, ngpu, rewards, dis, pg_loss, reporter):
+                 optimizer, converter, device, ngpu, rewards, dis, pg_loss, reporter, noise_iter):
         super(CustomUpdater, self).__init__(train_iter, optimizer)
         self.model = model
         self.grad_clip_threshold = grad_clip_threshold
@@ -204,6 +216,7 @@ class CustomUpdater(training.StandardUpdater):
         self.dis = dis
         self.pg_loss = pg_loss
         self.reporter = reporter
+        self.noiseiter = noise_iter
 
     # The core part of the update routine can be customized by overriding.
     def update_core(self):
@@ -219,17 +232,27 @@ class CustomUpdater(training.StandardUpdater):
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
         if self.rewards:
-            if ys_pad.size()[1] < 20:
-            # skip iteration as sequence is too small for conv net in discriminator
-                return
+            # if ys_pad.size()[1] < 20:
+            # # skip iteration as sequence is too small for conv net in discriminator
+            #     return
+            # encoder as input
+            hs_pad = self.model.encode(xs_pad, ilens, 1, self.dis) # batch_size, seqlen, projection
+            xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
+            hs_pad_noise = self.model.encode(xs_pad_noise, ilens_noise)
+            # convert batch_size,seq_len,projection to batch_size,seq_len
+            hs_pad = torch.max(hs_pad, 2)[1]
+            rewards = torch.tensor(self.rewards.get_rollout_reward_encoder(hs_pad, hs_pad_noise))
+
+            # decoder as input
             # this is during adversarial training
-            rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 16, self.dis))
+            # rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             rewards = rewards.to(self.device)
             loss_ctc, loss_att, acc, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
             # ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
             # convert ys_hat from batch_size x seq_len x vocab_size to batch_size*seq_len x vocab_size
             # convert ys_true from batch_size x seq_len to batch_size*seq_len
-            loss = self.pg_loss(ys_hat.contiguous().view(-1, VOCAB_SIZE), ys_true.data.contiguous().view((-1,)), rewards)
+            # loss = self.pg_loss(ys_hat.contiguous().view(-1, VOCAB_SIZE), ys_true.data.contiguous().view((-1,)), rewards)
+            loss = self.pg_loss(hs_pad_noise.contiguous().view(-1, ENCODER_EMBED_DIM), hs_pad.data.contiguous().view((-1,)), rewards)
             self.reporter.report(float(loss_ctc), float(loss_att), acc, float(loss))
             loss.backward()
         else:
@@ -547,7 +570,7 @@ def train(args):
     def create_main_trainer(epochs, tag, rewards, pg_loss):
         # Set up a trainer
         updater = CustomUpdater(
-            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rewards, dis, pg_loss, reporter)
+            model, args.grad_clip, copy.copy(train_iter), optimizer, converter, device, args.ngpu, rewards, dis, pg_loss, reporter, copy.copy(valid_noise_iter))
         trainer = training.Trainer(
             # updater, (args.epochs, 'epoch'), out=args.outdir)
             updater, (epochs, 'epoch'), out=args.outdir)

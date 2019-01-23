@@ -132,6 +132,46 @@ class Rewards(object):
         rewards = np.transpose(np.array(rewards)) / (1.0 * num) # batch_size * seq_len
         return rewards
 
+    def get_rollout_reward_encoder(hs_pad, hs_pad_noise, num, discriminator):
+        """
+        Implements a rollout policy gradient reward
+        https://arxiv.org/pdf/1609.05473.pdf
+        hs_pad and hs_pad_noise: batch_size, seq_len
+        hs_pad_noise: batch_size, seq_len,projection
+        """
+        # greedy_sampling
+        hs_pad_noise_greedy = torch.max(hs_pad_noise, 2)[1]
+        rewards = []
+        seq_len = hs_pad.size(1)
+        zero = torch.zeros(hs_pad.size(), dtype=torch.long)
+        if hs_pad_noise_greedy.is_cuda:
+            zero = zero.cuda()
+        for i in range(num):
+            for l in range(1, seq_len):
+                # just take the first l tokens
+                samples = torch.cat((hs_pad_noise_greedy[:, 0:l], zero[:,l:]), 1)
+                if hs_pad.is_cuda:
+                    samples = samples.cuda()
+                pred = discriminator(samples)
+                if hs_pad_noise_greedy.is_cuda:
+                    samples = samples.cuda()
+                pred = discriminator(samples)
+                pred = pred.cpu().data[:,1].numpy()
+                if i == 0:
+                    rewards.append(pred)
+                else:
+                    rewards[l-1] += pred
+
+            # for the last token
+            pred = discriminator(hs_pad)
+            pred = pred.cpu().data[:, 1].numpy()
+            if i == 0:
+                rewards.append(pred)
+            else:
+                rewards[seq_len-1] += pred
+        rewards = np.transpose(np.array(rewards)) / (1.0 * num) # batch_size * seq_len
+        return rewards
+
 
     def get_cer_reward(self, ys_hat, ys_true, num):
         """
