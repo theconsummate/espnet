@@ -245,7 +245,7 @@ class CustomUpdater(training.StandardUpdater):
             # # skip iteration as sequence is too small for conv net in discriminator
             #     return
             # encoder as input
-            hs_pad = self.model.encode(xs_pad, ilens, 1, self.dis) # batch_size, seqlen, projection
+            hs_pad = self.model.predictor.encode(xs_pad, ilens, 1, self.dis) # batch_size, seqlen, projection
             xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
             hs_pad_noise = self.model.encode(xs_pad_noise, ilens_noise)
             # convert batch_size,seq_len,projection to batch_size,seq_len
@@ -708,9 +708,9 @@ def train(args):
     e2e.eval()
     dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs)
-    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan/results/dis.snapshot.ep.10"
-    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_seqgan_esppretrain15_dispretrain22_advratio5/results/dis.snapshot.ep.22"
-    # torch_resume(dis_snapshot_path, dis_trainer)
+    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan/results/dis.snapshot.ep.10"
+    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj-split-landline/asr1/exp/train_si284_pytorch_cnnseqganencoder/results/dis.snapshot.ep.10"
+    torch_resume(dis_snapshot_path, dis_trainer)
     dis_trainer.run()
 
 
