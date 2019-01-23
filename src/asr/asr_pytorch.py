@@ -390,13 +390,13 @@ class CustomConverter(object):
         self.subsamping_factor = subsamping_factor
         self.ignore_id = -1
         self.noise_train_json = {}
-        self.use_noise = False
+        self.use_noise = True
 
     def transform(self, item):
         if not self.use_noise:
             return load_inputs_and_targets(item)
         else:
-            return load_inputs_and_targets_with_noise(item, noise_train_json)
+            return load_inputs_and_targets_with_noise(item, self.noise_train_json)
 
     def __call__(self, batch, device):
         # batch should be located in list
