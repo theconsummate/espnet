@@ -145,8 +145,8 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
         hs_pad_noise = self.e2e.encode(xs_pad_noise, ilens_noise)
 
-        out_clean = self.model(hs_pad)
-        out_noise = self.model(hs_pad_noise)
+        out_clean = self.dis(hs_pad)
+        out_noise = self.dis(hs_pad_noise)
 
         out = torch.cat((out_clean, out_noise), 0)
         # .type(torch.LongTensor)
