@@ -245,12 +245,12 @@ class CustomUpdater(training.StandardUpdater):
             # # skip iteration as sequence is too small for conv net in discriminator
             #     return
             # encoder as input
-            hs_pad = self.model.predictor.encode(xs_pad, ilens, 1, self.dis) # batch_size, seqlen, projection
+            hs_pad = self.model.predictor.encode(xs_pad, ilens) # batch_size, seqlen, projection
             xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
             hs_pad_noise = self.model.encode(xs_pad_noise, ilens_noise)
             # convert batch_size,seq_len,projection to batch_size,seq_len
             hs_pad = torch.max(hs_pad, 2)[1]
-            rewards = torch.tensor(self.rewards.get_rollout_reward_encoder(hs_pad, hs_pad_noise))
+            rewards = torch.tensor(self.rewards.get_rollout_reward_encoder(hs_pad, hs_pad_noise, 1, self.dis))
 
             # decoder as input
             # this is during adversarial training
