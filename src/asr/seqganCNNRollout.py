@@ -132,7 +132,7 @@ class Rewards(object):
         rewards = np.transpose(np.array(rewards)) / (1.0 * num) # batch_size * seq_len
         return rewards
 
-    def get_rollout_reward_encoder(hs_pad, hs_pad_noise, num, discriminator):
+    def get_rollout_reward_encoder(self, hs_pad, hs_pad_noise, num, discriminator):
         """
         Implements a rollout policy gradient reward
         https://arxiv.org/pdf/1609.05473.pdf
