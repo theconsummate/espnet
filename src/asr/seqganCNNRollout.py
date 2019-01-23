@@ -139,10 +139,11 @@ class Rewards(object):
         hs_pad and hs_pad_noise: batch_size, seq_len
         hs_pad_noise: batch_size, seq_len,projection
         """
+        print(hs_pad.shape, hs_pad_noise.shape)
         # greedy_sampling
         rewards = []
         seq_len = hs_pad.size(1)
-        zero = torch.zeros(hs_pad.size(), dtype=torch.long)
+        zero = torch.zeros(hs_pad_noise.size())
         if hs_pad_noise.is_cuda:
             zero = zero.cuda()
         for i in range(num):

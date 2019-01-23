@@ -249,9 +249,8 @@ class CustomUpdater(training.StandardUpdater):
             xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
             hs_pad_noise = self.model.predictor.encode(xs_pad_noise, ilens_noise)
             # convert batch_size,seq_len,projection to batch_size,seq_len
-            hs_pad = torch.max(hs_pad, 2)[1]
             rewards = torch.tensor(self.rewards.get_rollout_reward_encoder(hs_pad, hs_pad_noise, 1, self.dis))
-
+            hs_pad = torch.max(hs_pad, 2)[1]
             # decoder as input
             # this is during adversarial training
             # rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 16, self.dis))
