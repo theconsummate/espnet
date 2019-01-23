@@ -140,9 +140,9 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         acc = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
         return loss, acc
 
-    def evaluate_encoder_input(self, xs_pad, ilens):
+    def evaluate_encoder_input(self, xs_pad, ilens, iterator):
         hs_pad = self.e2e.encode(xs_pad, ilens) # batch_size, seqlen, projection
-        xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
+        xs_pad_noise, ilens_noise, _ = self.converter(iterator.next(), self.device)
         hs_pad_noise = self.e2e.encode(xs_pad_noise, ilens_noise)
 
         out_clean = self.dis(hs_pad)
@@ -176,6 +176,15 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
         else:
             it = copy.copy(iterator)
 
+        # reset for noisy iterator
+        iterator_noise = self.noiseiter
+
+        if hasattr(iterator_noise, 'reset'):
+            iterator_noise.reset()
+            it_noise = iterator_noise
+        else:
+            it_noise = copy.copy(iterator_noise)
+
         summary = reporter_module.DictSummary()
 
         self.dis.eval()
@@ -192,7 +201,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                         continue
 
                     # loss,acc = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
-                    loss,acc = self.evaluate_encoder_input(xs_pad, ilens)
+                    loss,acc = self.evaluate_encoder_input(xs_pad, ilens, it_noise)
 
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
