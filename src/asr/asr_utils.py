@@ -107,12 +107,18 @@ def load_inputs_and_targets_with_noise(batch, noise_json):
         logging.warning('Target sequences include empty tokenid (batch %d -> %d).' % (
             len(xs), len(nonzero_sorted_idx)))
 
+    # now noise
+    try:
+        xs_noise = [kaldi_io_py.read_mat(noise_json[b[0]]['input'][0]['feat']) for b in batch]
+    except KeyError:
+        # some key was not found in noise array, use clean as default
+        xs_noise = copy.copy(xs)
+
     # remove zero-length samples
     xs = [xs[i] for i in nonzero_sorted_idx]
     ys = [np.fromiter(map(int, ys[i]), dtype=np.int64) for i in nonzero_sorted_idx]
 
-    # now noise
-    xs_noise = [kaldi_io_py.read_mat(noise_json[b[0]]['input'][0]['feat']) for b in batch]
+
     xs_noise = [xs_noise[i] for i in nonzero_sorted_idx]
 
     return xs, ys, xs_noise
