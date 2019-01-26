@@ -142,7 +142,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
 
     def evaluate_encoder_input(self, xs_pad, ilens, iterator):
         hs_pad = self.e2e.encode(xs_pad, ilens) # batch_size, seqlen, projection
-        xs_pad_noise, ilens_noise, _ = self.converter(iterator.next(), self.device)
+        xs_pad_noise, ilens_noise, _, _ = self.converter(iterator.next(), self.device)
         hs_pad_noise = self.e2e.encode(xs_pad_noise, ilens_noise)
 
         out_clean = self.dis(hs_pad)
@@ -356,7 +356,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # Get the next batch ( a list of json files)
         # logging.warning("discriminator training loop.")
         batch = train_iter.next()
-        xs_pad, ilens, ys_pad = self.converter(batch, self.device)
+        xs_pad, ilens, ys_pad, _ = self.converter(batch, self.device)
         if ys_pad.size()[1] < 20:
         # skip iteration as sequence is too small for conv net
             return
