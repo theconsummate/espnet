@@ -192,8 +192,8 @@ class PlotAttentionReport(extension.Extension):
             os.makedirs(self.outdir)
 
     def __call__(self, trainer):
-        batch = self.converter([self.converter.transform(self.data)], self.device)
-        att_ws = self.att_vis_fn(*batch)
+        xs_pad, ilens, ys_pad, xs_pad_noise = self.converter([self.converter.transform(self.data)], self.device)
+        att_ws = self.att_vis_fn(xs_pad, ilens, ys_pad)
         for idx, att_w in enumerate(att_ws):
             filename = "%s/%s.ep.{.updater.epoch}.png" % (
                 self.outdir, self.data[idx][0])
