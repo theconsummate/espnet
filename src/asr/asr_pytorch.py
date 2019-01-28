@@ -195,7 +195,7 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                     # read scp files
                     # x: original json with loaded features
                     #    will be converted to chainer variable later
-                    xs_pad, ilens, ys_pad = self.converter(batch, self.device)
+                    xs_pad, ilens, ys_pad, _ = self.converter(batch, self.device)
                     if ys_pad.size()[1] < 20:
                         # skip iteration as sequence is too small for conv net
                         continue
@@ -325,7 +325,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
 
     def evaluate_encoder_input(self, xs_pad, ilens):
         hs_pad = self.e2e.encode(xs_pad, ilens) # batch_size, seqlen, projection
-        xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
+        xs_pad_noise, ilens_noise, _, _ = self.converter(self.noiseiter.next(), self.device)
         hs_pad_noise = self.e2e.encode(xs_pad_noise, ilens_noise)
 
         out_clean = self.model(hs_pad)
