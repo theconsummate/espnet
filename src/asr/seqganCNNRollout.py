@@ -9,7 +9,7 @@ import copy
 import numpy as np
 
 from asr_utils import clip_sequence, convert_ys_hat_prob_to_seq
-
+from nltk.metrics import distance
 
 # https://github.com/ZiJianZhao/SeqGAN-PyTorch
 class Discriminator(nn.Module):
@@ -173,6 +173,19 @@ class Rewards(object):
         return rewards
 
 
+    def cer(self, x, y):
+        errors = []
+        for i in range(x.size(0)):
+            xstr = "".join([chr(40+c) for c in x[i]])
+            ystr = "".join([chr(40+c) for c in y[i]])
+            #print(xstr, ystr)
+            errors.append(max(1, distance.edit_distance(xstr, ystr)))
+        errors = torch.tensor(errors).float()
+        if x.is_cuda:
+            errors = errors.cuda()
+        return errors
+
+
     def get_cer_reward(self, ys_hat, ys_true, num):
         """
         Implements Self-Critical Sequence Training (SCST)
@@ -180,6 +193,7 @@ class Rewards(object):
         reward = 1 - cer
         """
         rewards = []
+        eps = np.finfo(np.float32).eps.item()
         #rewards = torch.zeros(ys_pad.size(0))
         # batch_size = ys_pad.size(0)
         # add one because the output of the generator has an extra <eos> tag at the end.
@@ -191,7 +205,11 @@ class Rewards(object):
         # zero = torch.zeros(ys_true.size(), dtype=torch.long)
         #if ys_hat.is_cuda:
         #    rewards = rewards.cuda()
-        greedy_cer = torch.sum(convert_ys_hat_prob_to_seq(ys_hat, self.eos) != ys_true, 1).float()
+        greedy_cer = torch.max(torch.sum(convert_ys_hat_prob_to_seq(ys_hat, self.eos) != ys_true, 1), torch.ones(ys_true.size(0)).long().cuda()).float()
+        #print(greedy_cer)
+
+        #greedy_cer = self.cer(convert_ys_hat_prob_to_seq(ys_hat, self.eos),ys_true)
+
         c = Categorical(ys_hat)
         for i in range(num):
             sample = c.sample()
@@ -199,12 +217,19 @@ class Rewards(object):
             # if ys_hat.is_cuda:
             #     samples = samples.cuda()
             # get cer for the samples.
-            sample_cer = torch.sum(samples != ys_true, 1).float()
+            #sample_cer = torch.sum(samples != ys_true, 1).float()
+            # sample_cer = self.cer(samples, ys_true)
+            sample_cer = torch.max(torch.sum(samples != ys_true, 1), torch.ones(ys_true.size(0)).long().cuda()).float()
+            #print(sample_cer)
             # reward = -((1-sample_cer) - (1-greedy_cer))* p(y_sample/x)
-            rewards.append(-c.log_prob(sample).permute(1,0) * ( greedy_cer - sample_cer))
+            #rewards.append(greedy_cer - sample_cer)
+            r = -c.log_prob(sample).permute(1,0) * ( greedy_cer - sample_cer)
+            rewards.append(r.sum(0))
 
-        loss = torch.stack(rewards).sum() /(1.0 * num * ys_true.size(1))  # batch_size * seq_len
-        return Variable(loss, requires_grad = True)
+        loss = torch.stack(rewards).sum(0) /(1.0 * num * ys_true.size(1)* ys_true.size(0))  # batch_size * seq_len
+        #loss = torch.stack(rewards).sum(0).permute(1,0) /(1.0 * num * ys_true.size(1))  # batch_size * seq_len
+        return loss.sum()
+        #return Variable(loss, requires_grad = True)
 
     def update_params(self):
         dic = {}
@@ -229,14 +254,17 @@ class PGLoss(nn.Module):
         """
         Inputs: pred, target, reward
             - pred: (batch_size, seq_len),
-            - target : (batch_size, seq_len),
+            - target : (batch_size, seq_len, vocab),
             - reward : (batch_size, ), reward of each whole sentence
         """
+        print(reward.shape)
         one_hot = torch.zeros(pred.size(), dtype=torch.uint8)
         if pred.is_cuda:
             one_hot = one_hot.cuda()
-        one_hot.scatter_(1, target.data.view(-1, 1), 1)
-        loss = torch.masked_select(pred, one_hot)
-        loss = loss * reward.contiguous().view(-1)
+        one_hot.scatter_(2, target.unsqueeze(-1).expand_as(pred), 1)
+        loss = torch.masked_select(pred, one_hot).view(target.shape)
+        loss = loss.permute(1,0) * reward
         loss = -torch.sum(loss)
-        return Variable(loss, requires_grad = True)
+        print("pgloss ...", loss)
+        return loss
+        #return Variable(loss, requires_grad = True)

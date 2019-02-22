@@ -200,8 +200,8 @@ class CustomDiscriminatorEvaluator(extensions.Evaluator):
                         # skip iteration as sequence is too small for conv net
                         continue
 
-                    # loss,acc = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
-                    loss,acc = self.evaluate_encoder_input(xs_pad, ilens, it_noise)
+                    loss,acc = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
+                    # loss,acc = self.evaluate_encoder_input(xs_pad, ilens, it_noise)
 
                     self.target.report_dis(float(loss), acc)
                     print("discriminator loss: " + str(float(loss)) + ", accuracy: " + str(acc))
@@ -237,30 +237,37 @@ class CustomUpdater(training.StandardUpdater):
         # Get the next batch ( a list of json files)
         batch = train_iter.next()
         xs_pad, ilens, ys_pad = self.converter(batch, self.device)
+        alpha = 0.2
 
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
         if self.rewards:
-            # if ys_pad.size()[1] < 20:
-            # # skip iteration as sequence is too small for conv net in discriminator
-            #     return
+            #if ys_pad.size()[1] < 20:
+            # skip iteration as sequence is too small for conv net in discriminator
+            #    return
             # encoder as input
-            hs_pad = self.model.predictor.encode(xs_pad, ilens) # batch_size, seqlen, projection
-            xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
-            hs_pad_noise = self.model.predictor.encode(xs_pad_noise, ilens_noise)
+            #hs_pad = self.model.predictor.encode(xs_pad, ilens) # batch_size, seqlen, projection
+            #xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
+            #hs_pad_noise = self.model.predictor.encode(xs_pad_noise, ilens_noise)
             # convert batch_size,seq_len,projection to batch_size,seq_len
-            rewards = torch.tensor(self.rewards.get_rollout_reward_encoder(hs_pad, hs_pad_noise, 1, self.dis))
-            hs_pad = torch.max(hs_pad, 2)[1]
+            #rewards = torch.tensor(self.rewards.get_rollout_reward_encoder(hs_pad, hs_pad_noise, 1, self.dis))
+            #hs_pad = torch.max(hs_pad, 2)[1]
             # decoder as input
             # this is during adversarial training
-            # rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 16, self.dis))
-            rewards = rewards.to(self.device)
+            #rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 8, self.dis))
             loss_ctc, loss_att, acc, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
+
+            rewards = torch.tensor(self.rewards.get_cer_reward(ys_hat, ys_true, 16))
+            rewards = rewards.to(self.device)
+
             # ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
             # convert ys_hat from batch_size x seq_len x vocab_size to batch_size*seq_len x vocab_size
             # convert ys_true from batch_size x seq_len to batch_size*seq_len
-            # loss = self.pg_loss(ys_hat.contiguous().view(-1, VOCAB_SIZE), ys_true.data.contiguous().view((-1,)), rewards)
-            loss = self.pg_loss(hs_pad_noise.contiguous().view(-1, ENCODER_EMBED_DIM), hs_pad.data.contiguous().view((-1,)), rewards)
+            #loss = self.pg_loss(ys_hat.contiguous().view(-1, VOCAB_SIZE), ys_true.data.contiguous().view((-1,)), rewards)
+            #loss = self.pg_loss(ys_hat, ys_true, rewards)
+            loss = rewards + alpha * loss_ctc + (1 - alpha) * loss_att
+            # loss = loss/10000 + alpha * loss_ctc + (1 - alpha) * loss_att
+            # loss = self.pg_loss(hs_pad_noise.contiguous().view(-1, ENCODER_EMBED_DIM), hs_pad.data.contiguous().view((-1,)), rewards)
             self.reporter.report(float(loss_ctc), float(loss_att), acc, float(loss))
             loss.backward()
         else:
@@ -360,9 +367,9 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
             return
         optimizer.zero_grad()
         # decoder as input
-        # loss, acc_dis = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
+        loss, acc_dis = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
         # encoder as input
-        loss, acc_dis = self.evaluate_encoder_input(xs_pad, ilens)
+        # loss, acc_dis = self.evaluate_encoder_input(xs_pad, ilens)
 
 
         # report the values
@@ -464,8 +471,8 @@ def train(args):
     d_dropout_prob = 0.2
     #
     # decoder as input
-    # dis = Discriminator(d_num_class, VOCAB_SIZE, d_embed_dim, d_filter_sizes, d_num_filters, d_dropout_prob)
-    dis = DiscriminatorEncoder(d_num_class, ENCODER_EMBED_DIM, d_filter_sizes, d_num_filters, d_dropout_prob)
+    dis = Discriminator(d_num_class, VOCAB_SIZE, d_embed_dim, d_filter_sizes, d_num_filters, d_dropout_prob)
+    # dis = DiscriminatorEncoder(d_num_class, ENCODER_EMBED_DIM, d_filter_sizes, d_num_filters, d_dropout_prob)
     # encoder as input
     e2e = E2E(idim, odim, args)
     model = Loss(e2e, args.mtlalpha)
@@ -692,7 +699,7 @@ def train(args):
 
 
     trainer = create_main_trainer(args.epochs, "base", None, None)
-    dis_pre_train_epochs = 10
+    dis_pre_train_epochs = 30
     # Resume from a snapshot
     if args.resume:
         logging.info('resumed from %s' % args.resume)
@@ -704,19 +711,19 @@ def train(args):
     # train discriminator
     print("training discriminator")
     print("setting e2e to eval mode")
-    e2e.eval()
-    dis.train()
+    #e2e.eval()
+    #dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs)
     # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan/results/dis.snapshot.ep.10"
-    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj-split-landline/asr1/exp/train_si284_pytorch_cnnseqganencoder/results/dis.snapshot.ep.10"
-    torch_resume(dis_snapshot_path, dis_trainer)
-    dis_trainer.run()
+    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan_withgrad/results/dis.snapshot.ep.30"
+    #torch_resume(dis_snapshot_path, dis_trainer)
+    #dis_trainer.run()
 
 
     # run adversarial training with policy gradient
     ADV_TRAIN_EPOCHS = 5
-    # e2e.use_pgloss = True
-    # e2e.train()
+    e2e.use_pgloss = True
+    e2e.train()
     print("starting adversarial training")
     rewards = Rewards(e2e, 0.8, odim - 1)
     pg_loss = PGLoss()
@@ -725,10 +732,10 @@ def train(args):
         # train generator with policy gradient
         print("training generator with pg loss")
         trainer = create_main_trainer(1, "pgloss" + str(epoch), rewards, pg_loss)
-        dis_trainer = create_dis_trainer(8)
+        #dis_trainer = create_dis_trainer(10)
 
         e2e.train()
-        dis.eval()
+        #dis.eval()
         trainer.run()
         if epoch == (ADV_TRAIN_EPOCHS - 1):
             # no need to train the discriminator at the last loop, break
@@ -736,13 +743,13 @@ def train(args):
 
         # TRAIN DISCRIMINATOR
         print('Adversarial Training Discriminator')
-        e2e.eval()
-        dis.train()
-        dis_trainer.run()
+        #e2e.eval()
+        #dis.train()
+        #dis_trainer.run()
 
         print("Updating rewards model")
         # update roll-out model
-        rewards.update_params()
+        #rewards.update_params()
 
 
 
