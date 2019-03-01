@@ -21,7 +21,7 @@ class Discriminator(nn.Module):
 
     def __init__(self, num_classes, vocab_size, embedding_dim, filter_sizes, num_filters, dropout_prob):
         super(Discriminator, self).__init__()
-        self.embed = nn.Embedding(vocab_size, embedding_dim)
+        self.embed = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
         self.convs = nn.ModuleList([
             nn.Conv2d(1, num_f, (f_size, embedding_dim)) for f_size, num_f in zip(filter_sizes, num_filters)
         ])
@@ -253,18 +253,19 @@ class PGLoss(nn.Module):
     def forward(self, pred, target, reward):
         """
         Inputs: pred, target, reward
-            - pred: (batch_size, seq_len),
-            - target : (batch_size, seq_len, vocab),
-            - reward : (batch_size, ), reward of each whole sentence
+            - target : (batch_size, seq_len),
+            - pred   : (batch_size, seq_len, vocab),
+            - reward : (batch_size, seq_len), reward of each whole sentence
         """
-        print(reward.shape)
+        #print("reward shape...", reward.shape)
         one_hot = torch.zeros(pred.size(), dtype=torch.uint8)
         if pred.is_cuda:
             one_hot = one_hot.cuda()
         one_hot.scatter_(2, target.unsqueeze(-1).expand_as(pred), 1)
         loss = torch.masked_select(pred, one_hot).view(target.shape)
-        loss = loss.permute(1,0) * reward
-        loss = -torch.sum(loss)
-        print("pgloss ...", loss)
+        #print("loss shape...", loss.shape)
+        loss = loss * reward
+        loss = -torch.sum(loss)/(pred.size(0) * pred.size(1))
+        #print("pgloss ...", loss)
         return loss
         #return Variable(loss, requires_grad = True)
