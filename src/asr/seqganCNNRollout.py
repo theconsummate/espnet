@@ -106,21 +106,26 @@ class Rewards(object):
         zero = torch.zeros(ys_true.size(), dtype=torch.long)
         if ys_hat.is_cuda:
             zero = zero.cuda()
+        c = Categorical(ys_hat)
         for i in range(num):
-            for l in range(1, seq_len):
+            sample = c.sample()
+            #print("sample...", sample)
+            for l in range(20, seq_len):
                 # create a distribution object to draw samples from
-                c = Categorical(ys_hat[:, 0:l])
+                #csub = Categorical(ys_hat[:, l:])
                 # just take the first l tokens
                 # samples = torch.cat((ys_hat[:, 0:l], zero[:,l:]), 1)
-                samples = torch.cat((c.sample(), zero[:,l:]), 1)
-                if ys_hat.is_cuda:
-                    samples = samples.cuda()
-                pred = discriminator(samples)
+                #subsample = csub.sample()
+                #print("subsample...", subsample)
+                #samples = torch.cat((sample[:, 0:l], subsample), 1)
+                #if ys_hat.is_cuda:
+                #    samples = samples.cuda()
+                pred = discriminator(sample[:, 0:l])
                 pred = pred.cpu().data[:,1].numpy()
                 if i == 0:
                     rewards.append(pred)
                 else:
-                    rewards[l-1] += pred
+                    rewards[l-1-20] += pred
 
             # for the last token
             pred = discriminator(ys_true)
@@ -128,8 +133,12 @@ class Rewards(object):
             if i == 0:
                 rewards.append(pred)
             else:
-                rewards[seq_len-1] += pred
+                rewards[seq_len-1-20] += pred
         rewards = np.transpose(np.array(rewards)) / (1.0 * num) # batch_size * seq_len
+        # prefix first 20 elements again.
+        r = np.repeat([1], rewards.shape[1])
+        r[0] = 20
+        rewards = np.repeat(rewards, r, axis = 1)
         return rewards
 
     def get_rollout_reward_encoder(self, hs_pad, hs_pad_noise, num, discriminator):
@@ -265,7 +274,7 @@ class PGLoss(nn.Module):
         loss = torch.masked_select(pred, one_hot).view(target.shape)
         #print("loss shape...", loss.shape)
         loss = loss * reward
-        loss = -torch.sum(loss)/(pred.size(0) * pred.size(1))
+        loss = 0.2*torch.sum(loss)/(pred.size(0) * pred.size(1))
         #print("pgloss ...", loss)
         return loss
         #return Variable(loss, requires_grad = True)

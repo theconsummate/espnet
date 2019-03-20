@@ -321,7 +321,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         inp = inp.to(self.device)
         target = target.to(self.device)
 
-        out = self.model(inp)
+        out = self.model(inp.data)
         loss_fn = torch.nn.NLLLoss()
         loss = loss_fn(out, target)
         pred = out.data.max(1)[1]
@@ -690,7 +690,7 @@ def train(args):
 
         # Write a log of evaluation statistics for each epoch
         dis_trainer.extend(extensions.LogReport(trigger=(REPORT_INTERVAL, 'iteration')))
-        report_keys = ['epoch', 'iteration', 'main/loss_dis', 'validation/main/loss_dis', 'validation/main/acc_dis', 'elapsed_time']
+        report_keys = ['epoch', 'iteration', 'main/loss_dis', 'main/acc_dis', 'validation/main/loss_dis', 'validation/main/acc_dis', 'elapsed_time']
         dis_trainer.extend(extensions.PrintReport(
             report_keys), trigger=(REPORT_INTERVAL, 'iteration'))
 
@@ -732,11 +732,16 @@ def train(args):
         # train generator with policy gradient
         print("training generator with pg loss")
         trainer = create_main_trainer(1, "pgloss" + str(epoch), rewards, pg_loss)
-        #dis_trainer = create_dis_trainer(10)
+        dis_trainer = create_dis_trainer(10)
 
         e2e.train()
         #dis.eval()
         trainer.run()
+
+        print("Updating rewards model")
+        # update roll-out model
+        rewards.update_params()
+
         if epoch == (ADV_TRAIN_EPOCHS - 1):
             # no need to train the discriminator at the last loop, break
             break
@@ -745,12 +750,7 @@ def train(args):
         print('Adversarial Training Discriminator')
         #e2e.eval()
         #dis.train()
-        #dis_trainer.run()
-
-        print("Updating rewards model")
-        # update roll-out model
-        #rewards.update_params()
-
+        dis_trainer.run()
 
 
 def recog(args):
