@@ -215,7 +215,7 @@ class Rewards(object):
         #if ys_hat.is_cuda:
         #    rewards = rewards.cuda()
         greedy_cer = torch.max(torch.sum(convert_ys_hat_prob_to_seq(ys_hat, self.eos) != ys_true, 1), torch.ones(ys_true.size(0)).long().cuda()).float()
-        #print(greedy_cer)
+        #print(greedy_cer.sum()/greedy_cer.size(0))
 
         #greedy_cer = self.cer(convert_ys_hat_prob_to_seq(ys_hat, self.eos),ys_true)
 
@@ -274,7 +274,10 @@ class PGLoss(nn.Module):
         loss = torch.masked_select(pred, one_hot).view(target.shape)
         #print("loss shape...", loss.shape)
         loss = loss * reward
-        loss = 0.2*torch.sum(loss)/(pred.size(0) * pred.size(1))
+        # seqgan loss
+        loss = 0.05*torch.sum(loss)/(pred.size(0) * pred.size(1))
+        # cer loss
+        #loss = torch.sum(loss)/(pred.size(0) * pred.size(1))
         #print("pgloss ...", loss)
         return loss
         #return Variable(loss, requires_grad = True)

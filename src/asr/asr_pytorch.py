@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import os
+import random
 
 # chainer related
 import chainer
@@ -61,6 +62,7 @@ from asr_utils import convert_ys_hat_prob_to_seq
 REPORT_INTERVAL = 100
 
 VOCAB_SIZE = 52
+#VOCAB_SIZE = 97
 
 ENCODER_EMBED_DIM = 320
 
@@ -242,9 +244,9 @@ class CustomUpdater(training.StandardUpdater):
         # Compute the loss at this time step and accumulate it
         optimizer.zero_grad()  # Clear the parameter gradients
         if self.rewards:
-            #if ys_pad.size()[1] < 20:
+            if ys_pad.size()[1] < 20:
             # skip iteration as sequence is too small for conv net in discriminator
-            #    return
+                return
             # encoder as input
             #hs_pad = self.model.predictor.encode(xs_pad, ilens) # batch_size, seqlen, projection
             #xs_pad_noise, ilens_noise, _ = self.converter(self.noiseiter.next(), self.device)
@@ -254,18 +256,19 @@ class CustomUpdater(training.StandardUpdater):
             #hs_pad = torch.max(hs_pad, 2)[1]
             # decoder as input
             # this is during adversarial training
-            #rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 8, self.dis))
+            with torch.no_grad():
+                rewards = torch.tensor(self.rewards.get_rollout_reward(xs_pad, ilens, ys_pad, 16, self.dis))
             loss_ctc, loss_att, acc, _, ys_hat, ys_true = self.model.predictor(xs_pad, ilens, ys_pad)
 
-            rewards = torch.tensor(self.rewards.get_cer_reward(ys_hat, ys_true, 16))
+            #rewards = torch.tensor(self.rewards.get_cer_reward(ys_hat, ys_true, 16))
             rewards = rewards.to(self.device)
 
             # ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
             # convert ys_hat from batch_size x seq_len x vocab_size to batch_size*seq_len x vocab_size
             # convert ys_true from batch_size x seq_len to batch_size*seq_len
             #loss = self.pg_loss(ys_hat.contiguous().view(-1, VOCAB_SIZE), ys_true.data.contiguous().view((-1,)), rewards)
-            #loss = self.pg_loss(ys_hat, ys_true, rewards)
-            loss = rewards + alpha * loss_ctc + (1 - alpha) * loss_att
+            loss = self.pg_loss(ys_hat, ys_true, rewards)
+            loss = loss + alpha * loss_ctc + (1 - alpha) * loss_att
             # loss = loss/10000 + alpha * loss_ctc + (1 - alpha) * loss_att
             # loss = self.pg_loss(hs_pad_noise.contiguous().view(-1, ENCODER_EMBED_DIM), hs_pad.data.contiguous().view((-1,)), rewards)
             self.reporter.report(float(loss_ctc), float(loss_att), acc, float(loss))
@@ -310,13 +313,21 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # Compute the loss at this time step and accumulate it
         # optimizer.zero_grad()  # Clear the parameter gradients
         # compute the negatives form e2e
-        _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
+        with torch.no_grad():
+            _, _, _, _, ys_hat, ys_true = self.e2e(xs_pad, ilens, ys_pad)
+        #ys_hat = ys_hat.data
+        #ys_true = ys_true.data
         ys_hat = convert_ys_hat_prob_to_seq(ys_hat, VOCAB_SIZE - 1)
 
         inp = torch.cat((ys_true, ys_hat), 0)
         # .type(torch.LongTensor)
         target = torch.ones(ys_true.size()[0] + ys_hat.size()[0]).type(torch.LongTensor)
         target[ys_true.size()[0]:] = 0
+        #if random.random() > 0.3:
+        #    target[ys_true.size()[0]:] = 0
+        #else:
+        #    # flip labels
+        #    target[:ys_true.size()[0]] = 0
         # target[:ys_true.size()[0]] = 0.9
         inp = inp.to(self.device)
         target = target.to(self.device)
@@ -326,6 +337,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         loss = loss_fn(out, target)
         pred = out.data.max(1)[1]
         acc_dis = pred.eq(target.data).cpu().sum().item()/float(target.size()[0])
+        del ys_hat, inp, target, out, pred
         return loss, acc_dis
 
     def evaluate_encoder_input(self, xs_pad, ilens):
@@ -358,6 +370,7 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         train_iter = self.get_iterator('main')
         optimizer = self.get_optimizer('main')
 
+        # torch.cuda.empty_cache()
         # Get the next batch ( a list of json files)
         # logging.warning("discriminator training loop.")
         batch = train_iter.next()
@@ -366,10 +379,12 @@ class CustomDiscriminatorUpdater(training.StandardUpdater):
         # skip iteration as sequence is too small for conv net
             return
         optimizer.zero_grad()
+        # print(torch.cuda.memory_allocated() , torch.cuda.memory_cached() )
         # decoder as input
         loss, acc_dis = self.evaluate_decoder_input(xs_pad, ilens, ys_pad)
         # encoder as input
         # loss, acc_dis = self.evaluate_encoder_input(xs_pad, ilens)
+        del xs_pad, ilens, ys_pad
 
 
         # report the values
@@ -699,7 +714,7 @@ def train(args):
 
 
     trainer = create_main_trainer(args.epochs, "base", None, None)
-    dis_pre_train_epochs = 30
+    dis_pre_train_epochs = 30 # 30 for wsj, 1 for wsj noisy
     # Resume from a snapshot
     if args.resume:
         logging.info('resumed from %s' % args.resume)
@@ -711,13 +726,16 @@ def train(args):
     # train discriminator
     print("training discriminator")
     print("setting e2e to eval mode")
-    #e2e.eval()
-    #dis.train()
+    e2e.eval()
+    dis.train()
     dis_trainer = create_dis_trainer(dis_pre_train_epochs)
-    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan/results/dis.snapshot.ep.10"
-    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan_withgrad/results/dis.snapshot.ep.30"
+    #dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj-landline-mix/asr1/exp/train_si284_pytorch_cnnseqgan/results/dis.snapshot.ep.30"
+    #dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan_withgrad/results/dis.snapshot.ep.30"
+    #dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/wsj/asr1/exp/train_si284_pytorch_cnnseqgan_1epoch/results/dis.snapshot.ep.30"
+    # dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/tedlium/asr1/exp/train_trim_pytorch_baseline/results/dis.snapshot.ep.30"
+    dis_snapshot_path = "/mount/arbeitsdaten/asr-2/mishradv/espnet/egs/german/asr1/exp/tuda_train_pytorch_baseline/results/dis.snapshot.ep.30"
     #torch_resume(dis_snapshot_path, dis_trainer)
-    #dis_trainer.run()
+    dis_trainer.run()
 
 
     # run adversarial training with policy gradient
@@ -732,10 +750,11 @@ def train(args):
         # train generator with policy gradient
         print("training generator with pg loss")
         trainer = create_main_trainer(1, "pgloss" + str(epoch), rewards, pg_loss)
-        dis_trainer = create_dis_trainer(10)
+        dis_trainer = create_dis_trainer(10) # 10 for wsj
 
+        # torch.cuda.empty_cache()
         e2e.train()
-        #dis.eval()
+        dis.eval()
         trainer.run()
 
         print("Updating rewards model")
@@ -748,8 +767,9 @@ def train(args):
 
         # TRAIN DISCRIMINATOR
         print('Adversarial Training Discriminator')
-        #e2e.eval()
-        #dis.train()
+        #torch.cuda.empty_cache()
+        e2e.eval()
+        dis.train()
         dis_trainer.run()
 
 
