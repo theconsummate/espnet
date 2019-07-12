@@ -537,10 +537,14 @@ def train(args):
 
     # comment the following if noise is not being used.
     # assuming that data.json and data_noise.json are present
-    with open(args.train_json[:-5] + "_noise.json", 'rb') as f:
-        train_noise_json = json.load(f)['utts']
-    with open(args.valid_json[:-5] + "_noise.json", 'rb') as f:
-        valid_noise_json = json.load(f)['utts']
+    # with open(args.train_json[:-5] + "_noise.json", 'rb') as f:
+    #     train_noise_json = json.load(f)['utts']
+    # with open(args.valid_json[:-5] + "_noise.json", 'rb') as f:
+    #     valid_noise_json = json.load(f)['utts']
+
+    # create a copy of train_json to make sure that the code runs through.
+    train_noise_json = copy.copy(train_json)
+    valid_noise_json = copy.copy(valid_json)
 
     # full = clean + noisy not required right now!
     # train_full_json = {}
